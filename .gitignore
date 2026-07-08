@@ -6,6 +6,8 @@ Thumbs.db
 *.log
 *.tmp
 *.temp
+*.pdf
+*.ipynb
 
 # IDEs and editors
 .vscode/
