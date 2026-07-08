@@ -92,7 +92,7 @@ async def explain_overview(db = Depends(get_db), current_admin: dict = Depends(g
     
     prompt = (
         f"You are a supply chain AI analyst. Write a concise 20 sentences executive summary of the current supply chain status.\n"
-        f"We have:\n- Total sales orders analyzed: {len(orders)}.\n- KNN unusual fraud transactions flagged: {unusual_count}.\n"
+        f"We have:\n- Total sales orders analyzed: {len(orders)}.\n- KNN unusual transactions flagged: {unusual_count}.\n"
         f"- Critical shipping delays (>3 days) detected: {len(delayed)} orders.\n- Delayed order identifiers: {delayed_str}.\n\n"
         f"Write a professional summary for the SC Manager. State the number of unusual transactions and list the names/identifiers of the delayed purchases (orders). "
         f"Suggest actionable steps like immediate anomalies verification and logistic team coordination. Do NOT use bullet points, markdown list syntax, or greetings."
@@ -111,7 +111,7 @@ async def explain_overview(db = Depends(get_db), current_admin: dict = Depends(g
     except Exception:
         pass
         
-    return {"explanation": f"Supply chain overview analysis has completed successfully. Our KNN classifier model has flagged {unusual_count} unusual transaction fraud cases. Critical shipping delays exceeding the 3-day threshold were detected on orders: {delayed_str}. We recommend initiating immediate fraud reviews for flagged clients and coordinating with logistics partners to resolve the delayed purchases."}
+    return {"explanation": f"Supply chain overview analysis has completed successfully. Our KNN classifier model has flagged {unusual_count} unusual transaction cases. Critical shipping delays exceeding the 3-day threshold were detected on orders: {delayed_str}. We recommend initiating immediate fraud reviews for flagged clients and coordinating with logistics partners to resolve the delayed purchases."}
 
 @router.get("/top-products")
 async def get_top_products(db = Depends(get_db), current_admin: dict = Depends(get_current_admin)):
