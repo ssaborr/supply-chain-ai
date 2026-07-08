@@ -35,6 +35,8 @@ FrontEnd/pnpm-debug.log*
 FrontEnd/.env
 FrontEnd/.env.*
 
+/outputs/
+
 # Backend (Python / FastAPI)
 BackEnd/__pycache__/
 BackEnd/**/*.py[cod]
