@@ -30,8 +30,8 @@ class FaceService:
         
         try:
             # Load buffalo_l SCRFD detector and ArcFace model
-            self.app = FaceAnalysis(name='buffalo_l', providers=[provider])
-            self.app.prepare(ctx_id=0, det_size=(640, 640))
+            self.model = FaceAnalysis(name='buffalo_l', providers=[provider])
+            self.model.prepare(ctx_id=0, det_size=(640, 640))
             self._initialized = True
             logger.info("InsightFace FaceAnalysis initialized successfully.")
         except Exception as e:
@@ -66,7 +66,7 @@ class FaceService:
             raise ValueError("Invalid image array.")
 
         try:
-            faces = self.app.get(img)
+            faces = self.model.get(img)
         except Exception as e:
             logger.error(f"Error executing face detection: {e}", exc_info=True)
             raise ValueError(f"Face model analysis error: {str(e)}")
@@ -79,7 +79,7 @@ class FaceService:
         if len(faces) > 1:
             raise ValueError("Multiple faces detected. Please ensure only one face is visible in the frame.")
 
-        face = faces[0]
+        face = faces[0] #gets face
 
         # Reject if low detection confidence (<0.65)
         if getattr(face, 'det_score', 0.0) < 0.65:
@@ -93,7 +93,7 @@ class FaceService:
             raise ValueError(f"Face is too small in the frame ({width}x{height}px). Please move closer to the camera (minimum size 100x100px).")
 
         # Extract and normalize embedding
-        embedding = face.embedding
+        embedding = face.embedding #embeds face
         norm = np.linalg.norm(embedding)
         if norm > 0:
             embedding = embedding / norm
@@ -111,6 +111,7 @@ class FaceService:
         
         # Cosine similarity (dot product)
         similarity = float(np.dot(a, b))
+        logger.debug(f"Cosine similarity calculated: {similarity:.4f}")
         return similarity
 
 _face_service_instance = None

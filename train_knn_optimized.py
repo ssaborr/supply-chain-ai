@@ -85,8 +85,10 @@ def optimize_and_train_knn():
     }
     
     model_path = r"c:\Users\Sabor\Desktop\project\processed_data\knn_anomaly_model.pkl"
-    with open(model_path, 'wb') as f:
+    tmp_path = model_path + ".tmp"
+    with open(tmp_path, 'wb') as f:
         pickle.dump(model_data, f)
+    os.replace(tmp_path, model_path)
     print(f"\nSuccessfully saved optimized KNN model configuration to {model_path}")
 
 if __name__ == "__main__":

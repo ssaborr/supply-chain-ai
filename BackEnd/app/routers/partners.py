@@ -75,6 +75,7 @@ async def get_clients_segmentation(db = Depends(get_db), current_admin: dict = D
         df = pd.DataFrame(client_data)
         
         if len(df) >= 3:
+            #kmeans train
             scaler = StandardScaler()
             X = scaler.fit_transform(df[["recency", "frequency", "monetary"]])
             kmeans = KMeans(n_clusters=3, random_state=42)

@@ -98,10 +98,10 @@ async def login_face(payload: FaceLoginRequest, db = Depends(get_db)):
             
         best_sim = -1.0
         for enrollment in enrollments:
-            sim = face_service.calculate_cosine_similarity(query_embedding, enrollment["embedding"])
+            sim = face_service.calculate_cosine_similarity(query_embedding, enrollment["embedding"]) #compare embeddings 
             if sim > best_sim:
                 best_sim = sim
-                
+                # to get best sim pic
         logger.info(f"1-to-1 Face verification for {email_clean}: best similarity = {best_sim:.4f}")
         if best_sim >= FACE_MATCH_THRESHOLD:
             matched_user = user

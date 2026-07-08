@@ -6,14 +6,19 @@ import pandas as pd
 logger = logging.getLogger("anomaly_sync")
 
 LGB_MODEL_DATA = None
+LGB_MODEL_MTIME = 0
 
 def load_lgb_model():
-    global LGB_MODEL_DATA
-    if LGB_MODEL_DATA is None and os.path.exists(r"c:\Users\Sabor\Desktop\project\processed_data\lgb_anomaly_model.pkl"):
+    global LGB_MODEL_DATA, LGB_MODEL_MTIME
+    model_path = r"c:\Users\Sabor\Desktop\project\processed_data\lgb_anomaly_model.pkl"
+    if os.path.exists(model_path):
         try:
-            with open(r"c:\Users\Sabor\Desktop\project\processed_data\lgb_anomaly_model.pkl", "rb") as f:
-                LGB_MODEL_DATA = pickle.load(f)
-            logger.info("Successfully loaded LightGBM anomaly model for background synchronization.")
+            mtime = os.path.getmtime(model_path)
+            if LGB_MODEL_DATA is None or mtime > LGB_MODEL_MTIME:
+                with open(model_path, "rb") as f:
+                    LGB_MODEL_DATA = pickle.load(f)
+                LGB_MODEL_MTIME = mtime
+                logger.info("Successfully loaded/reloaded LightGBM anomaly model for background synchronization.")
         except Exception as e:
             logger.error(f"Failed to load LGB model: {e}")
     return LGB_MODEL_DATA

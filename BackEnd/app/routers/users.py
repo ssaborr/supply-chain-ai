@@ -100,7 +100,7 @@ async def delete_admin(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User not found."
         )
-
+#enroll face
 @router.post("/{admin_id}/enroll-face", response_model=AdminOut)
 async def enroll_user_face(
     admin_id: str,

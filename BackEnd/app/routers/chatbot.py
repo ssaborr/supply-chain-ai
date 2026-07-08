@@ -185,8 +185,7 @@ async def query_chatbot(request: ChatRequest, db = Depends(get_db), current_admi
 
     llm_response = ""
     model_name = "qwen2.5:7b"
-    
-    # Execute LLM Call (Step 1)
+
     try:
         async with httpx.AsyncClient(timeout=20.0) as client:
             resp = await client.get("http://localhost:11434/api/tags")

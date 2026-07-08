@@ -9,6 +9,8 @@ from app.services.product_service import generate_cluster_summary
 
 router = APIRouter(prefix="/products", tags=["Products"])
 
+RETRAINED_PRODUCTS = set()
+
 @router.get("/clusters/summary")
 async def get_clusters_summary(db = Depends(get_db), current_admin: dict = Depends(get_current_admin)):
     return {"summary": await generate_cluster_summary(db)}
@@ -57,12 +59,14 @@ async def list_forecasts(
     current_admin: dict = Depends(get_current_admin)
 ):
     query = {"product_id": product_id} if product_id is not None else {}
-    if product_id is not None:
-        future_count = await db["forecasts"].count_documents({"product_id": product_id, "sales": None})
-        if future_count < 90:
+    if product_id is not None and product_id != 0:
+        global RETRAINED_PRODUCTS
+        if product_id not in RETRAINED_PRODUCTS:
             hist_count = await db["forecasts"].count_documents({"product_id": product_id, "sales": {"$ne": None}})
             if hist_count >= 2:
-                # Fire-and-forget: return existing data immediately, train in background
+                RETRAINED_PRODUCTS.add(product_id)
+                # Fire-and-forget: return existing data immediately, train in background.
+                # The frontend loading state will poll and load the updated flexible forecast in 8s.
                 background_tasks.add_task(retrain_demand_forecast, db, product_id)
     return [{**doc, "id": str(doc.pop("_id"))} async for doc in db["forecasts"].find(query).sort("date", 1).limit(limit)]
 

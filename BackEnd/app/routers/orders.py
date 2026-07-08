@@ -1,24 +1,34 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, File, UploadFile, BackgroundTasks
 from bson import ObjectId
 from typing import List, Optional
 from app.core.database import get_db
 from app.services.auth_service import get_current_admin
 import os
+import io
+import logging
 import pickle
 import numpy as np
 import pandas as pd
 import httpx
+from app.services.ml_update import retrain_all_models_task
+
+logger = logging.getLogger("orders_router")
 
 router = APIRouter(prefix="/orders", tags=["Orders"])
 
 LGB_MODEL_DATA = None
+LGB_MODEL_MTIME = 0
 
 def load_lgb_model():
-    global LGB_MODEL_DATA
-    if LGB_MODEL_DATA is None and os.path.exists(r"c:\Users\Sabor\Desktop\project\processed_data\lgb_anomaly_model.pkl"):
+    global LGB_MODEL_DATA, LGB_MODEL_MTIME
+    model_path = r"c:\Users\Sabor\Desktop\project\processed_data\lgb_anomaly_model.pkl"
+    if os.path.exists(model_path):
         try:
-            with open(r"c:\Users\Sabor\Desktop\project\processed_data\lgb_anomaly_model.pkl", "rb") as f:
-                LGB_MODEL_DATA = pickle.load(f)
+            mtime = os.path.getmtime(model_path)
+            if LGB_MODEL_DATA is None or mtime > LGB_MODEL_MTIME:
+                with open(model_path, "rb") as f:
+                    LGB_MODEL_DATA = pickle.load(f)
+                LGB_MODEL_MTIME = mtime
         except Exception:
             pass
     return LGB_MODEL_DATA
@@ -262,4 +272,246 @@ async def get_discount_analysis(db = Depends(get_db), current_admin: dict = Depe
         "units_sold": units_sold_data,
         "counts": counts
     }
+
+@router.post("/validate")
+async def validate_orders_endpoint(
+    file: UploadFile = File(...),
+    current_admin: dict = Depends(get_current_admin)
+):
+    filename = file.filename
+    ext = os.path.splitext(filename)[1].lower()
+    
+    contents = await file.read()
+    
+    try:
+        if ext == '.csv':
+            df = pd.read_csv(io.BytesIO(contents), encoding='latin-1', nrows=10)
+        elif ext in ['.xlsx', '.xls']:
+            df = pd.read_excel(io.BytesIO(contents), nrows=10)
+        else:
+            return {"status": "error", "message": "Invalid file format. Please upload a .csv or .xlsx/.xls file."}
+    except Exception as e:
+        return {"status": "error", "message": f"Error reading file: {e}"}
+        
+    col_mapping = {
+        'Order Id': 'order_id',
+        'Customer Id': 'customer_id',
+        'Order Customer Id': 'customer_id',
+        'order date (DateOrders)': 'order_date',
+        'Order Status': 'status',
+        'Order Profit Per Order': 'profit',
+        'Days for shipment (scheduled)': 'scheduled_shipment',
+        'Days for shipping (real)': 'real_shipment',
+        'Order Item Quantity': 'quantity',
+        'Product Price': 'unit_price',
+        'Order Item Product Price': 'unit_price',
+        'Product Card Id': 'product_sku',
+        'Order Item Cardprod Id': 'product_sku'
+    }
+    
+    df_cols = {c.strip(): c for c in df.columns}
+    rename_dict = {}
+    for standard_name, mapped_key in col_mapping.items():
+        for col in df_cols:
+            if col.lower() == standard_name.lower():
+                rename_dict[col] = mapped_key
+                
+    df = df.rename(columns=rename_dict)
+    df = df.loc[:, ~df.columns.duplicated()]
+    
+    required_cols = ['order_id', 'customer_id', 'order_date', 'status', 'quantity', 'unit_price', 'product_sku']
+    missing = [c for c in required_cols if c not in df.columns]
+    if missing:
+        # map back to standard names
+        reverse_mapping = {
+            'order_id': 'Order Id',
+            'customer_id': 'Customer Id',
+            'order_date': 'order date (DateOrders)',
+            'status': 'Order Status',
+            'quantity': 'Order Item Quantity',
+            'unit_price': 'Product Price',
+            'product_sku': 'Product Card Id'
+        }
+        missing_friendly = [reverse_mapping.get(c, c) for c in missing]
+        return {
+            "status": "error",
+            "message": f"Missing required columns: {missing_friendly}"
+        }
+        
+    try:
+        if ext == '.csv':
+            df_full = pd.read_csv(io.BytesIO(contents), encoding='latin-1')
+        else:
+            df_full = pd.read_excel(io.BytesIO(contents))
+        df_full = df_full.rename(columns=rename_dict)
+        order_count = int(df_full['order_id'].nunique())
+    except Exception:
+        order_count = 0
+        
+    return {
+        "status": "success",
+        "message": "Check passed: All necessary columns exist.",
+        "order_count": order_count,
+        "columns": list(rename_dict.keys())
+    }
+
+@router.post("/import", status_code=status.HTTP_202_ACCEPTED)
+async def import_orders_endpoint(
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(...),
+    db = Depends(get_db),
+    current_admin: dict = Depends(get_current_admin)
+):
+    filename = file.filename
+    ext = os.path.splitext(filename)[1].lower()
+    
+    contents = await file.read()
+    
+    try:
+        if ext == '.csv':
+            df = pd.read_csv(io.BytesIO(contents), encoding='latin-1')
+        elif ext in ['.xlsx', '.xls']:
+            df = pd.read_excel(io.BytesIO(contents))
+        else:
+            raise HTTPException(status_code=400, detail="Invalid file format. Please upload a .csv or .xlsx/.xls file.")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Error reading file: {e}")
+        
+    col_mapping = {
+        'Order Id': 'order_id',
+        'Customer Id': 'customer_id',
+        'Order Customer Id': 'customer_id',
+        'order date (DateOrders)': 'order_date',
+        'Order Status': 'status',
+        'Order Profit Per Order': 'profit',
+        'Days for shipment (scheduled)': 'scheduled_shipment',
+        'Days for shipping (real)': 'real_shipment',
+        'Order Item Quantity': 'quantity',
+        'Product Price': 'unit_price',
+        'Order Item Product Price': 'unit_price',
+        'Product Card Id': 'product_sku',
+        'Order Item Cardprod Id': 'product_sku'
+    }
+    
+    df_cols = {c.strip(): c for c in df.columns}
+    rename_dict = {}
+    for standard_name, mapped_key in col_mapping.items():
+        for col in df_cols:
+            if col.lower() == standard_name.lower():
+                rename_dict[col] = mapped_key
+                
+    df = df.rename(columns=rename_dict)
+    df = df.loc[:, ~df.columns.duplicated()]
+    
+    required_cols = ['order_id', 'customer_id', 'order_date', 'status', 'quantity', 'unit_price', 'product_sku']
+    missing = [c for c in required_cols if c not in df.columns]
+    if missing:
+        raise HTTPException(status_code=400, detail=f"Missing columns: {missing}. Please check the schema.")
+        
+    grouped = df.groupby('order_id')
+    imported_count = 0
+    
+    for order_id, group in grouped:
+        try:
+            first_row = group.iloc[0]
+            cust_id = str(int(first_row["customer_id"]))
+            order_date = str(first_row["order_date"])
+            status_val = str(first_row["status"])
+            
+            profit = float(group["profit"].sum()) if 'profit' in group.columns else 0.0
+            
+            scheduled = int(first_row["scheduled_shipment"]) if 'scheduled_shipment' in first_row else 0
+            real = int(first_row["real_shipment"]) if 'real_shipment' in first_row else 0
+            delay = real - scheduled
+            internal_delay = max(0, delay // 2)
+            transport_delay = max(0, delay - internal_delay)
+            
+            lines = []
+            for _, row in group.iterrows():
+                lines.append({
+                    "quantity": int(row["quantity"]),
+                    "unitPrice": float(row["unit_price"]),
+                    "product_sku": int(row["product_sku"])
+                })
+                
+            order_doc = {
+                "id": int(order_id),
+                "client_id": cust_id,
+                "order_date": order_date,
+                "status": status_val,
+                "order_profit": profit,
+                "scheduled_shipment": scheduled,
+                "real_shipment": real,
+                "internalDelay": internal_delay,
+                "transportDelay": transport_delay,
+                "order_lines": lines
+            }
+            
+            await db["sales_orders"].update_one(
+                {"id": int(order_id)},
+                {"$set": order_doc},
+                upsert=True
+            )
+            
+            is_fraud = 1 if status_val == "SUSPECTED_FRAUD" else 0
+            if is_fraud == 1:
+                await db["anomalies"].update_one(
+                    {"sales_order_id": int(order_id)},
+                    {"$set": {
+                        "anomaly": "Suspected Transaction Fraud",
+                        "score": -0.88,
+                        "type": "fraud",
+                        "timestamp": order_date,
+                        "description": f"Fraud warning triggered on payment status: {status_val}.",
+                        "sales_order_id": int(order_id)
+                    }},
+                    upsert=True
+                )
+            elif delay > 3:
+                await db["anomalies"].update_one(
+                    {"sales_order_id": int(order_id)},
+                    {"$set": {
+                        "anomaly": "Critical Shipping Delay",
+                        "score": float(-0.1 * delay),
+                        "type": "delay",
+                        "timestamp": order_date,
+                        "description": f"Shipping took {real} days vs promised {scheduled} days.",
+                        "sales_order_id": int(order_id)
+                    }},
+                    upsert=True
+                )
+            else:
+                await db["anomalies"].delete_one({"sales_order_id": int(order_id)})
+                
+            try:
+                date_parsed = pd.to_datetime(order_date).strftime('%Y-%m-%d')
+                for line in lines:
+                    sku = int(line["product_sku"])
+                    qty = int(line["quantity"])
+                    
+                    exist_fc = await db["forecasts"].find_one({"product_id": sku, "date": date_parsed, "sales": {"$ne": None}})
+                    if exist_fc:
+                        await db["forecasts"].update_one(
+                            {"_id": exist_fc["_id"]},
+                            {"$inc": {"sales": float(qty)}}
+                        )
+                    else:
+                        await db["forecasts"].insert_one({
+                            "date": date_parsed,
+                            "product_id": sku,
+                            "sales": float(qty),
+                            "forecast": float(qty * 0.95)
+                        })
+            except Exception:
+                pass
+                
+            imported_count += 1
+        except Exception as ex:
+            logger.warning(f"Error processing imported order row: {ex}")
+            continue
+            
+    background_tasks.add_task(retrain_all_models_task, db)
+    
+    return {"message": f"Successfully imported {imported_count} orders. ML model retraining triggered in the background."}
+
 

@@ -74,8 +74,10 @@ def optimize_and_train_lgb():
     }
     
     model_path = r"c:\Users\Sabor\Desktop\project\processed_data\lgb_anomaly_model.pkl"
-    with open(model_path, 'wb') as f:
+    tmp_path = model_path + ".tmp"
+    with open(tmp_path, 'wb') as f:
         pickle.dump(model_data, f)
+    os.replace(tmp_path, model_path)
     print(f"\nSuccessfully saved optimized LightGBM model configuration to {model_path}")
 
 if __name__ == "__main__":
