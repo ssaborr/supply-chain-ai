@@ -8,7 +8,8 @@ Thumbs.db
 *.temp
 *.pdf
 *.ipynb
-
+*.docx
+*.pptx
 # IDEs and editors
 .vscode/
 .idea/
