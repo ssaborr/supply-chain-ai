@@ -5,6 +5,8 @@ import re
 import json
 from app.services.auth_service import get_current_admin
 from app.core.database import get_db
+from app.core.config import settings
+from app.services.email_service import send_email_notification
 
 router = APIRouter(prefix="/chatbot", tags=["Chatbot"])
 
@@ -48,6 +50,180 @@ async def query_chatbot(request: ChatRequest, db = Depends(get_db), current_admi
                 "• **Client C23312 has 3 other canceled orders** this week."
             )
         }
+
+    # Logistics reminder email generator (restricted to admins)
+    action_verbs = ["send", "envoie", "envoyer", "write", "rédige", "rédiger", "remind", "relance", "relancer"]
+    mail_nouns = ["mail", "email", "e-mail", "courriel"]
+    is_reminder_request = any(w in message_lower for w in ["relance", "remind", "relancer"]) or (
+        any(v in message_lower for v in action_verbs) and any(n in message_lower for n in mail_nouns)
+    )
+    if is_reminder_request and not is_supplier:
+        # 1. Fetch all distinct suppliers
+        all_suppliers = await db["purchases"].distinct("Supplier")
+        
+        # 2. Check if a specific supplier is mentioned in the query
+        matched_supplier = None
+        for sup in all_suppliers:
+            words = sup.lower().split()
+            ignore_words = {"manufacturing", "distribution", "global", "supply", "sourcing", "logistics", "co.", "mills", "suppliers", "ltd", "distributors", "eu", "spain", "co"}
+            keywords = [w for w in words if w not in ignore_words and len(w) > 2]
+            if keywords and any(kw in message_lower for kw in keywords):
+                matched_supplier = sup
+                break
+                
+        # 3. If no supplier is mentioned, default to the one with the most delays in purchase orders
+        if not matched_supplier:
+            delayed_counts = {}
+            async for p in db["purchases"].find():
+                sup = p.get("Supplier")
+                if not sup:
+                    continue
+                late_count = sum(1 for line in p.get("purchase_lines", []) if line.get("supplyDelay", 0) > 10)
+                if late_count > 0:
+                    delayed_counts[sup] = delayed_counts.get(sup, 0) + late_count
+            if delayed_counts:
+                matched_supplier = max(delayed_counts, key=delayed_counts.get)
+                
+        # 4. If we have a supplier, find their delayed purchase orders
+        if matched_supplier:
+            late_orders = []
+            async for p in db["purchases"].find({"Supplier": matched_supplier}):
+                late_lines = []
+                for line in p.get("purchase_lines", []):
+                    delay = line.get("supplyDelay", 0)
+                    if delay > 10:
+                        late_lines.append({
+                            "sku": line.get("product_sku"),
+                            "delay": delay,
+                            "qty": line.get("quantity")
+                        })
+                if late_lines:
+                    late_orders.append({
+                        "id": p.get("id"),
+                        "date": p.get("date"),
+                        "lines": late_lines
+                    })
+                    
+            # Format the late orders context if present
+            formatted_list = ""
+            if late_orders:
+                for order in late_orders:
+                    lines_str = ", ".join([f"SKU #{l['sku']} ({l['delay']} days delayed)" for l in order["lines"]])
+                    formatted_list += f"- Order **{order['id']}** on {order['date']} : {lines_str}\n"
+
+            # Check if query is about delays/orders
+            is_late_delivery_related = any(w in message_lower for w in ["delay", "late", "retard", "livraison", "delivery", "order", "commande", "po", "shipment"])
+            
+            # Construct the prompt for Ollama dynamically using the user's instructions
+            prompt = (
+                f"Write a professional business email or reminder in English to the supplier '{matched_supplier}'.\n"
+                f"The user's query is: '{message}'\n\n"
+                f"Sign the email with the following details (do NOT leave placeholder brackets like [Your Name] in the signature):\n"
+                f"- Name: Supply Chain AI Admin\n"
+                f"- Position: Admin\n"
+                f"- Contact: 0606060606\n\n"
+            )
+            if formatted_list and (is_late_delivery_related or len(message.split()) < 5):
+                prompt += (
+                    f"Here is the database context of delayed orders for this supplier:\n"
+                    f"{formatted_list}\n"
+                    f"If the user's query asks about delays/orders, please list these orders and exact delays. Otherwise, focus on the user's instructions.\n\n"
+                )
+            prompt += (
+                f"Respond ONLY with the email subject and email body. "
+                f"Do not include any introductory remarks (like 'Here is the email:') or personal notes at the end."
+            )
+            
+            email_text = ""
+            try:
+                async with httpx.AsyncClient(timeout=20.0) as client:
+                    resp = await client.get("http://localhost:11434/api/tags")
+                    installed = [m["name"] for m in resp.json().get("models", [])] if resp.status_code == 200 else []
+                    model_name = "qwen2.5:7b" if "qwen2.5:7b" in installed else (installed[0] if installed else "qwen2.5:7b")
+                    
+                    gen_resp = await client.post("http://localhost:11434/api/generate", json={
+                        "model": model_name,
+                        "prompt": prompt,
+                        "stream": False
+                    })
+                    if gen_resp.status_code == 200:
+                        email_text = gen_resp.json().get("response", "").strip()
+            except Exception:
+                pass
+            
+            # Smart fallback if Ollama is offline or fails
+            if not email_text:
+                if "meeting" in message_lower or "réunion" in message_lower:
+                    email_text = (
+                        f"**Subject:** Meeting Reminder - {matched_supplier}\n\n"
+                        f"Dear Partner,\n\n"
+                        f"This is a reminder regarding our meeting scheduled for tomorrow.\n\n"
+                        f"Please confirm your availability and the agenda items.\n\n"
+                        f"Sincerely,\n"
+                        f"**Supply Chain & Procurement Team**"
+                    )
+                else:
+                    orders_details_english = ""
+                    if late_orders:
+                        for order in late_orders:
+                            for l in order["lines"]:
+                                orders_details_english += f"- Order **{order['id']}** (Date: {order['date']}) | Product: SKU #{l['sku']} | Exact Delay: **{l['delay']} days**\n"
+                    
+                    if orders_details_english:
+                        email_text = (
+                            f"**Subject:** Important Reminder - Delivery Delay for Our Pending Orders\n\n"
+                            f"Dear Partner,\n\n"
+                            f"We are contacting you regarding a delivery delay detected for our orders with your company **{matched_supplier}**.\n\n"
+                            f"As of today, the following orders are delayed:\n"
+                            f"{orders_details_english}\n"
+                            f"These delays directly impact our supply chain and customer commitments. Please check the status of these orders and confirm the exact delivery dates within 24 hours.\n\n"
+                            f"We look forward to your prompt response.\n\n"
+                            f"Sincerely,\n"
+                            f"**Supply Chain & Procurement Team**"
+                        )
+                    else:
+                        email_text = (
+                            f"**Subject:** Business Update Request - {matched_supplier}\n\n"
+                            f"Dear Partner,\n\n"
+                            f"We are reaching out to request a status update on our pending orders and general logistics operations with your team.\n\n"
+                            f"Please let us know your current availability for a quick alignment.\n\n"
+                            f"Sincerely,\n"
+                            f"**Supply Chain & Procurement Team**"
+                        )
+            
+            # Dispatch the email via SMTP (real or simulated fallback)
+            supplier_user = await db["admin"].find_one({"supplier_name": matched_supplier})
+            to_email = supplier_user.get("email") if (supplier_user and supplier_user.get("email")) else f"{matched_supplier.lower().replace(' ', '')}@supplychain-partner.com"
+            
+            # Parse subject from generated email text if possible, else default
+            subject = f"Important Reminder - {matched_supplier}"
+            for line in email_text.split('\n'):
+                if line.lower().startswith("**subject:**") or line.lower().startswith("subject:"):
+                    subject = line.split(":", 1)[1].strip().replace("**", "")
+                    break
+            
+            mail_res = await send_email_notification(to_email, subject, email_text)
+            
+            status_msg = ""
+            if mail_res.get("simulated"):
+                status_msg = f"\n\n*(Note: The email send was simulated in the development console because the local SMTP server {settings.SMTP_HOST}:{settings.SMTP_PORT} is unreachable. Resolved recipient: `{to_email}`)*"
+            else:
+                status_msg = f"\n\n*(Success: Email successfully sent via the SMTP server {settings.SMTP_HOST}:{settings.SMTP_PORT} to `{to_email}`)*"
+
+            return {
+                "response": (
+                    f"The reminder email has been written and sent to the supplier **{matched_supplier}**:\n\n"
+                    f"---\n\n"
+                    f"{email_text}\n\n"
+                    f"---"
+                    f"{status_msg}"
+                )
+            }
+        else:
+            return {
+                "response": "I could not find any supplier in the database to draft the email."
+            }
+
     
     # Extract order IDs from query (up to 8 digits)
     order_id_match = re.search(r'\b(?:po|order|purchase\s*order)?\s*#?\s*(\d{1,8})\b', message_lower)
@@ -81,6 +257,7 @@ async def query_chatbot(request: ChatRequest, db = Depends(get_db), current_admi
                 "total_clients": await db["client"].count_documents({}),
                 "total_insights": await db["insights"].count_documents({})
             }
+            pre_context["all_suppliers"] = await db["purchases"].distinct("Supplier")
             
             kpis_cursor = db["kpis"].find({})
             pre_context["kpis"] = [{"name": k["name"], "value": k["value"], "description": k["description"]} async for k in kpis_cursor]
@@ -121,6 +298,29 @@ async def query_chatbot(request: ChatRequest, db = Depends(get_db), current_admi
                 prod_data.pop("_id", None)
                 pre_context["product"] = prod_data
                 
+        # Check if query contains any known supplier name to pre-retrieve
+        if not is_supplier:
+            all_suppliers = await db["purchases"].distinct("Supplier")
+            matched_supplier = None
+            for sup in all_suppliers:
+                words = sup.lower().split()
+                ignore_words = {"manufacturing", "distribution", "global", "supply", "sourcing", "logistics", "co.", "mills", "suppliers", "ltd", "distributors", "eu", "spain", "co"}
+                keywords = [w for w in words if w not in ignore_words and len(w) > 2]
+                if keywords and any(kw in message_lower for kw in keywords):
+                    matched_supplier = sup
+                    break
+            
+            if matched_supplier:
+                purchases_cursor = db["purchases"].find({"Supplier": matched_supplier}).limit(5)
+                sups_p = []
+                async for doc in purchases_cursor:
+                    doc.pop("_id", None)
+                    sups_p.append(doc)
+                pre_context["supplier_info"] = {
+                    "name": matched_supplier,
+                    "purchases": sups_p
+                }
+
     except Exception as e:
         pre_context["db_error"] = str(e)
 
@@ -163,7 +363,17 @@ async def query_chatbot(request: ChatRequest, db = Depends(get_db), current_admi
             "4. **client**:\n"
             "   - Fields: 'id' (str, e.g., '20755'), 'first_name' (str), 'last_name' (str), 'email' (str), 'country' (str), 'rfm_score' (float)\n"
             "5. **kpis**:\n"
-            "   - Fields: 'name' (str), 'description' (str), 'value' (float)\n\n"
+            "   - Fields: 'name' (str), 'description' (str), 'value' (float)\n"
+            "6. **purchases**:\n"
+            "   - Fields: 'id' (str), 'origin' (str), 'date' (str), 'type' (str), 'lot' (str), 'Supplier' (str), 'purchase_lines' (list of {'quantity': int, 'unitPrice': float, 'supplyDelay': int, 'product_sku': int})\n"
+            "7. **departments**:\n"
+            "   - Fields: 'id' (str), 'name' (str), 'address' (str)\n"
+            "8. **insights**:\n"
+            "   - Fields: 'id' (int), 'name' (str), 'verdict' (str), 'category' (str), 'description' (str), 'timestamp' (str), 'client_id' (str), 'product_sku' (int), 'sales_order_id' (int)\n"
+            "9. **forecasts**:\n"
+            "   - Fields: 'date' (str), 'product_id' (int), 'sales' (float, optional), 'forecast' (float)\n"
+            "10. **admin**:\n"
+            "   - Fields: 'email' (str), 'first_name' (str), 'last_name' (str), 'role' (str), 'supplier_name' (str)\n\n"
             "HOW TO QUERY THE DATABASE (MCP TOOL CALLING):\n"
             "If you do not have the database answers in the pre-retrieved data, you MUST write a tool call in the following format on a single line:\n"
             "DB_QUERY: {\"collection\": \"<collection_name>\", \"operation\": \"find_one\"|\"find_many\"|\"count\", \"filter\": <filter_dict>}\n"
@@ -173,6 +383,7 @@ async def query_chatbot(request: ChatRequest, db = Depends(get_db), current_admi
             "You write: DB_QUERY: {\"collection\": \"anomalies\", \"operation\": \"find_many\", \"filter\": {\"sales_order_id\": 367}}\n\n"
             "FINAL ANSWER INSTRUCTIONS:\n"
             "Once you have the database results (either pre-retrieved or after executing DB_QUERY), write a clean, conversational response to the user. "
+            "You MUST respond in English at all times. Do not translate your response to French, even if the user queries in French.\n"
             "Do not display the DB_QUERY commands to the user. Keep final responses to 3 sentences max. "
             "If the response references a specific sales order ID (e.g. PO 367), you MUST output a markdown link formatted exactly as: [PO #<id>](http://localhost:4200/sales-order?orderId=<id>) so the user can easily open it directly from the chat window."
         )
@@ -216,7 +427,7 @@ async def query_chatbot(request: ChatRequest, db = Depends(get_db), current_admi
             query_result = None
             
             # Enforce supplier check on DB_QUERY filters
-            allowed_collections = ["sales_orders", "anomalies", "products"] if is_supplier else ["sales_orders", "anomalies", "products", "client", "kpis"]
+            allowed_collections = ["sales_orders", "anomalies", "products"] if is_supplier else ["sales_orders", "anomalies", "products", "client", "kpis", "purchases"]
             
             if collection in allowed_collections:
                 if is_supplier:
@@ -297,6 +508,44 @@ async def query_chatbot(request: ChatRequest, db = Depends(get_db), current_admi
                 "response": f"I queried the database for PO #{order_id}, but no matching order record was found."
             }
             
+    elif "supplier_info" in pre_context:
+        sup_info = pre_context["supplier_info"]
+        sup_name = sup_info["name"]
+        purchs = sup_info["purchases"]
+        if purchs:
+            lines_desc = []
+            for p in purchs:
+                sku_list = [str(line.get("product_sku")) for line in p.get("purchase_lines", [])]
+                lines_desc.append(f"• Purchase Order **{p['id']}** on {p['date']} (Type: {p['type']}, Lot: {p['lot']}, SKUs: {', '.join(sku_list)})")
+            lines_str = "\n".join(lines_desc)
+            return {
+                "response": (
+                    f"Here is the information for the supplier **{sup_name}**:\n\n"
+                    f"Latest purchase orders placed:\n"
+                    f"{lines_str}"
+                )
+            }
+        else:
+            return {
+                "response": f"I did not find any purchase orders recorded for the supplier **{sup_name}** in the database."
+            }
+
+    elif "supplier" in message_lower or "fournisseur" in message_lower:
+        all_suppliers = await db["purchases"].distinct("Supplier")
+        if all_suppliers:
+            suppliers_str = "\n".join([f"• {sup}" for sup in all_suppliers])
+            return {
+                "response": (
+                    f"Here is the list of registered suppliers in the system:\n\n"
+                    f"{suppliers_str}\n\n"
+                    f"You can ask me about a specific supplier (e.g., 'tell me about the supplier Nike Manufacturing EU')."
+                )
+            }
+        else:
+            return {
+                "response": "No registered suppliers found in the database."
+            }
+
     elif "order" in message_lower and ("count" in message_lower or "how many" in message_lower or "total" in message_lower):
         if is_supplier:
             return {
