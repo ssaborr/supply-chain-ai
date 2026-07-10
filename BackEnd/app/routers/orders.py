@@ -99,7 +99,7 @@ async def explain_overview(db = Depends(get_db), current_admin: dict = Depends(g
     )
     
     try:
-        async with httpx.AsyncClient(timeout=15.0) as client:
+        async with httpx.AsyncClient(timeout=60.0) as client:
             resp = await client.get("http://localhost:11434/api/tags")
             if resp.status_code != 200:
                 logger.error("Ollama /api/tags failed: %s %s", resp.status_code, await resp.text())
@@ -191,7 +191,7 @@ async def explain_order(order_id: int, db = Depends(get_db), current_admin: dict
     )
 
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with httpx.AsyncClient(timeout=60.0) as client:
             resp = await client.get("http://localhost:11434/api/tags")
             installed = [m["name"] for m in resp.json().get("models", [])] if resp.status_code == 200 else []
             model = "qwen2.5:7b" if "qwen2.5:7b" in installed else (installed[0] if installed else "qwen2.5:7b")

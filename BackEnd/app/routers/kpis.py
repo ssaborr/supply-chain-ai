@@ -33,6 +33,7 @@ def _get_order_revenue(order):
         _to_float(line.get("quantity", 0)) * _to_float(line.get("unitPrice", 0.0))
         for line in lines
     )
+    logger.debug(f"Computed total_sales for order {order.get('id')}: {total_sales}")
     if total_sales:
         return total_sales
 
@@ -58,7 +59,8 @@ def _aggregate_metrics(orders):
     customer_ids = set()
 
     for order in orders:
-        revenue += _get_order_revenue(order)
+        # For total sales KPI, use the reported `order_profit` directly
+        revenue += _to_float(order.get("order_profit", 0.0))
         delay = _get_order_delay(order)
         if delay <= 0:
             ontime_count += 1
@@ -243,7 +245,7 @@ async def get_executive_summary(db = Depends(get_db), current_admin: dict = Depe
     
     summary_text = ""
     try:
-        async with httpx.AsyncClient(timeout=20.0) as client:
+        async with httpx.AsyncClient(timeout=60.0) as client:
             resp = await client.get("http://localhost:11434/api/tags")
             if resp.status_code != 200:
                 logger.error("Ollama /api/tags failed: %s %s", resp.status_code, await resp.text())

@@ -197,7 +197,7 @@ async def explain_clients_segmentation(db = Depends(get_db), current_admin: dict
     
     explanation = ""
     try:
-        async with httpx.AsyncClient(timeout=20.0) as client:
+        async with httpx.AsyncClient(timeout=60.0) as client:
             resp = await client.get("http://localhost:11434/api/tags")
             installed = [m["name"] for m in resp.json().get("models", [])] if resp.status_code == 200 else []
             pref = ["qwen2.5:7b", "qwen2.5:latest", "qwen2.5", "llama3.1", "llama3", "mistral"]
