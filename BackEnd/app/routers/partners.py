@@ -180,7 +180,7 @@ async def explain_clients_segmentation(db = Depends(get_db), current_admin: dict
     import httpx
     clients = await get_clients_segmentation(db, current_admin)
     if not clients:
-        return {"explanation": "No client segmentation data available to analyze."}
+        raise HTTPException(status_code=404, detail="Client segmentation data unavailable")
         
     champions_count = sum(1 for c in clients if c.get("cluster") == "CHAMPIONS")
     loyal_count = sum(1 for c in clients if c.get("cluster") == "LOYAL")
@@ -206,13 +206,11 @@ async def explain_clients_segmentation(db = Depends(get_db), current_admin: dict
             gen_resp = await client.post("http://localhost:11434/api/generate", json={"model": model, "prompt": prompt, "stream": False})
             if gen_resp.status_code == 200 and gen_resp.json().get("response", "").strip():
                 explanation = gen_resp.json()["response"].strip()
-    except Exception:
-        pass
-        
+    except Exception as exc:
+        logger.exception("Ollama request failed for client segmentation explanation: %s", exc)
+        raise HTTPException(status_code=502, detail="Ollama client segmentation explanation generation failed")
+
     if not explanation:
-        explanation = (
-            f"K-Means client RFM segmentation identifies {at_risk_count} clients at risk due to purchase recency exceeding 90 days. "
-            f"We recommend initiating targeted email retention campaigns with promotional coupons to re-engage these accounts."
-        )
-        
+        raise HTTPException(status_code=502, detail="Ollama client segmentation explanation generation failed")
+
     return {"explanation": explanation}

@@ -4,6 +4,7 @@ import logging
 from typing import Optional
 import numpy as np
 import pandas as pd
+from fastapi import HTTPException
 from statsmodels.tsa.arima.model import ARIMA
 from pymongo import UpdateOne
 
@@ -283,8 +284,14 @@ async def generate_forecast_explanation(db, product_id: int) -> str:
         
         try:
             async with httpx.AsyncClient(timeout=60.0) as client:
+                # Dynamically resolve installed models
+                resp = await client.get("http://localhost:11434/api/tags")
+                installed = [m["name"] for m in resp.json().get("models", [])] if resp.status_code == 200 else []
+                pref = ["qwen2.5:7b", "qwen2.5:latest", "qwen2.5", "llama3.1", "llama3", "mistral"]
+                model = next((m for p in pref for m in installed if m.startswith(p)), installed[0] if installed else "qwen2.5:7b")
+                
                 response = await client.post(ollama_url, json={
-                    "model": "qwen2.5:7b",
+                    "model": model,
                     "prompt": prompt,
                     "stream": False
                 })
@@ -293,29 +300,19 @@ async def generate_forecast_explanation(db, product_id: int) -> str:
                     insights = response.json().get("response", "").strip()
                     if insights:
                         return insights
+                    logger.error("Ollama returned empty forecast explanation response for product %s", product_id)
+                    raise HTTPException(status_code=502, detail="Ollama forecast explanation generation failed")
+                else:
+                    logger.error("Ollama /api/generate failed for forecast explanation: %s %s", response.status_code, await response.text())
+                    raise HTTPException(status_code=502, detail="Ollama forecast explanation generation failed")
+        except HTTPException:
+            raise
         except Exception as err:
-            logger.warning(f"Ollama local LLM connection failed: {err}. Falling back to template explanation.")
-            
-        # Fallback explanation
-        if has_stockout:
-            return (
-                f"The ARIMA model predicts a critical demand spike of up to {peak_forecast:.0f} units on {peak_date}, "
-                f"which exceeds the safety stock threshold relative to your historical daily average of {hist_mean:.0f} units. "
-                f"We recommend increasing current inventory levels immediately to avoid stockout for SKU #{product_id}."
-            )
-        elif has_high_demand:
-            return (
-                f"A period of elevated demand is expected, peaking at {peak_forecast:.0f} units on {peak_date} "
-                f"(historical average is {hist_mean:.0f} units). Supply chain efficiency is stable, but we recommend "
-                f"monitoring supplier lead times to support this temporary increase in volume."
-            )
-        else:
-            return (
-                f"Future demand for {product_name} is projected to be stable, averaging {forecast_mean:.0f} units per day "
-                f"which aligns with the historical baseline of {hist_mean:.0f} units. Current stock levels are sufficient "
-                f"and no stockouts are anticipated over the next 30 days."
-            )
-            
+            logger.exception("Ollama local LLM connection failed for forecast explanation: %s", err)
+            print(f"Ollama local LLM connection failed for forecast explanation: {err}")
+            raise HTTPException(status_code=502, detail="Ollama forecast explanation generation failed")
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error generating forecast explanation: {e}", exc_info=True)
-        return "Unable to generate forecast explanation due to an internal error."
+        raise HTTPException(status_code=500, detail="Unable to generate forecast explanation due to an internal error")

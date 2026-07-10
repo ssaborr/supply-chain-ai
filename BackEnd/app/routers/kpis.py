@@ -245,24 +245,26 @@ async def get_executive_summary(db = Depends(get_db), current_admin: dict = Depe
     try:
         async with httpx.AsyncClient(timeout=20.0) as client:
             resp = await client.get("http://localhost:11434/api/tags")
+            if resp.status_code != 200:
+                logger.error("Ollama /api/tags failed: %s %s", resp.status_code, await resp.text())
             installed = [m["name"] for m in resp.json().get("models", [])] if resp.status_code == 200 else []
             pref = ["qwen2.5:7b", "qwen2.5:latest", "qwen2.5", "llama3.1", "llama3", "mistral"]
             model = next((m for p in pref for m in installed if m.startswith(p)), installed[0] if installed else "qwen2.5:7b")
             
             gen_resp = await client.post("http://localhost:11434/api/generate", json={"model": model, "prompt": prompt, "stream": False})
-            if gen_resp.status_code == 200 and gen_resp.json().get("response", "").strip():
-                summary_text = gen_resp.json()["response"].strip()
-    except Exception:
-        pass
-        
+            if gen_resp.status_code != 200:
+                logger.error("Ollama /api/generate failed: %s %s", gen_resp.status_code, await gen_resp.text())
+            else:
+                summary_text = gen_resp.json().get("response", "").strip()
+                if not summary_text:
+                    logger.error("Ollama returned empty summary response for model %s", model)
+    except Exception as exc:
+        logger.exception("Ollama request failed for executive summary: %s", exc)
+        raise HTTPException(status_code=502, detail="Ollama executive summary generation failed")
+
     if not summary_text:
-        # backup summary if Ollama falls offline
-        summary_text = (
-            f"Business operations are running stable with a Global Supply Chain Health score of {health:.1f}%, supported by an OTIF Service Level of {otif:.1f}%. "
-            f"Active stockouts are contained at {stockout_rate:.1f}%, keeping delivery lead times at a stable average of {avg_lead:.1f} days. "
-            f"We recommend auditing the remaining delayed orders and coordinating with logistics partners to sustain current performance thresholds."
-        )
-        
+        raise HTTPException(status_code=502, detail="Ollama executive summary generation failed")
+
     rev_str = f"${revenue/1e6:.1f}M" if revenue >= 1e6 else (f"${revenue/1e3:.1f}K" if revenue >= 1e3 else f"${revenue:.2f}")
     return {
         "summary": summary_text,

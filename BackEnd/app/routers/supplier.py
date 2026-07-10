@@ -203,18 +203,16 @@ async def get_supplier_dashboard_data(
                 gen_resp = await client.post("http://localhost:11434/api/generate", json={"model": model, "prompt": prompt, "stream": False})
                 if gen_resp.status_code == 200 and gen_resp.json().get("response", "").strip():
                     ai_explanation = gen_resp.json()["response"].strip()
-        except Exception:
-            pass
+                elif gen_resp.status_code != 200:
+                    logger.error("Ollama /api/generate failed for supplier explanation: %s %s", gen_resp.status_code, await gen_resp.text())
+                else:
+                    logger.error("Ollama returned empty supplier explanation response for model %s", model)
+        except Exception as exc:
+            logger.exception("Ollama request failed for supplier explanation: %s", exc)
+            raise HTTPException(status_code=502, detail="Ollama supplier explanation generation failed")
 
         if not ai_explanation:
-            low_stock_names = ", ".join([p.get("name") for p in low_stock_items[:3]])
-            stock_msg = f" (specifically {low_stock_names})" if low_stock_items else ""
-            ai_explanation = (
-                f"Dear Partner, your operational performance for {supplier_name} shows a reliable On-Time In-Full (OTIF) rate of {otif_rate:.1f}% with an average lead time of {avg_lead_time:.1f} days. "
-                f"Currently, there are {len(sales_orders)} active downstream customer sales orders reliant on your products. "
-                f"We have detected {len(low_stock_items)} products approaching critical stock levels{stock_msg}. "
-                f"Please coordinate with our logistics team and prioritize replenishment shipments for these items to avoid customer order delays."
-            )
+            raise HTTPException(status_code=502, detail="Ollama supplier explanation generation failed")
 
         return {
             "supplier_name": supplier_name,

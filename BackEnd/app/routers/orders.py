@@ -39,7 +39,7 @@ async def list_orders(limit: int = 500, db = Depends(get_db), current_admin: dic
     model_data = load_lgb_model()
     orders = []
 
-    async for doc in db["sales_orders"].find().limit(limit):
+    async for doc in db["sales_orders"].find().sort("id", -1).limit(limit):
         doc["mongo_id"] = str(doc.pop("_id"))
         lines = doc.get("order_lines", [])
         total_quantity = sum(line.get("quantity", 0) for line in lines)
@@ -85,7 +85,7 @@ async def list_purchases(limit: int = 100, db = Depends(get_db), current_admin: 
 
 @router.get("/overview/explain")
 async def explain_overview(db = Depends(get_db), current_admin: dict = Depends(get_current_admin)):
-    orders = await list_orders(limit=500, db=db, current_admin=current_admin)
+    orders = await list_orders(limit=100000, db=db, current_admin=current_admin)
     unusual_count = sum(1 for o in orders if o.get("anomaly_status") == "unusual")
     delayed = [f"SO{o['id']}" for o in orders if o.get("anomaly_status") == "delay anomaly"]
     delayed_str = (", ".join(delayed[:5]) + (f" and {len(delayed) - 5} others" if len(delayed) > 5 else "")) if delayed else "None"
@@ -101,17 +101,25 @@ async def explain_overview(db = Depends(get_db), current_admin: dict = Depends(g
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
             resp = await client.get("http://localhost:11434/api/tags")
+            if resp.status_code != 200:
+                logger.error("Ollama /api/tags failed: %s %s", resp.status_code, await resp.text())
             installed = [m["name"] for m in resp.json().get("models", [])] if resp.status_code == 200 else []
             pref = ["qwen2.5:7b", "qwen2.5:latest", "qwen2.5", "llama3.1", "llama3", "mistral"]
             model = next((m for p in pref for m in installed if m.startswith(p)), installed[0] if installed else "qwen2.5:7b")
             
             gen_resp = await client.post("http://localhost:11434/api/generate", json={"model": model, "prompt": prompt, "stream": False})
-            if gen_resp.status_code == 200 and gen_resp.json().get("response", "").strip():
-                return {"explanation": gen_resp.json()["response"].strip()}
-    except Exception:
-        pass
-        
-    return {"explanation": f"Supply chain overview analysis has completed successfully. Our KNN classifier model has flagged {unusual_count} unusual transaction cases. Critical shipping delays exceeding the 3-day threshold were detected on orders: {delayed_str}. We recommend initiating immediate fraud reviews for flagged clients and coordinating with logistics partners to resolve the delayed sales orders."}
+            if gen_resp.status_code == 200:
+                response_text = gen_resp.json().get("response", "").strip()
+                if response_text:
+                    return {"explanation": response_text}
+                logger.error("Ollama returned empty overview explanation response for model %s", model)
+            else:
+                logger.error("Ollama /api/generate failed: %s %s", gen_resp.status_code, await gen_resp.text())
+    except Exception as exc:
+        logger.exception("Ollama request failed for overview explanation: %s", exc)
+        print(f"Ollama request failed for overview explanation: {exc}")
+
+    raise HTTPException(status_code=502, detail="Ollama explanation generation failed")
 
 @router.get("/top-products")
 async def get_top_products(db = Depends(get_db), current_admin: dict = Depends(get_current_admin)):
@@ -195,15 +203,15 @@ async def explain_order(order_id: int, db = Depends(get_db), current_admin: dict
             })
             if gen_resp.status_code == 200 and gen_resp.json().get("response", "").strip():
                 return {"explanation": gen_resp.json()["response"].strip()}
-    except Exception:
-        pass
+            elif gen_resp.status_code != 200:
+                logger.error("Ollama /api/generate failed for order explanation: %s %s", gen_resp.status_code, await gen_resp.text())
+            else:
+                logger.error("Ollama returned empty order explanation response for model %s", model)
+    except Exception as exc:
+        logger.exception("Ollama request failed for order explanation: %s", exc)
+        raise HTTPException(status_code=502, detail="Ollama order explanation generation failed")
 
-    if status == "UNUSUAL (Fraud Risk)":
-        return {"explanation": f"KNN analysis flags SO #{order_id} as suspicious due to a high Profit Margin Deviation (+{margin_val}) and elevated Sales Volume (+{qty_val}), while Client History ({history_val}) acts as the main mitigating factor. Immediate audit recommended."}
-    elif status == "DELAY ANOMALY":
-        return {"explanation": f"SO #{order_id} is flagged with a critical shipping delay anomaly (+{delay_val} contribution) due to a carrier delivery delay of {delay_delta} days beyond scheduled shipment, despite standard profit margins."}
-    else:
-        return {"explanation": f"SO #{order_id} is classified as valid. Key mitigating factors include low shipping delay ({delay_val}) and a stable profit margin ({margin_val}), keeping all attributes well within standard baseline bounds."}
+    raise HTTPException(status_code=502, detail="Ollama order explanation generation failed")
 
 
 @router.post("/{order_id}/verdict")
