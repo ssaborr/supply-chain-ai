@@ -43,7 +43,7 @@ async def create_admin(
             detail="Only administrators can manage users and permissions."
         )
 
-    # Check duplicate email
+    # verify email is unique before registering account
     email_clean = admin_in.email.lower()
     existing = await db["admin"].find_one({"email": email_clean})
     if existing:
@@ -100,7 +100,7 @@ async def delete_admin(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User not found."
         )
-#enroll face
+# save face biometric scan
 @router.post("/{admin_id}/enroll-face", response_model=AdminOut)
 async def enroll_user_face(
     admin_id: str,
@@ -108,7 +108,7 @@ async def enroll_user_face(
     db = Depends(get_db),
     current_admin: dict = Depends(get_current_admin)
 ):
-    # Enforce admin or self enrollment
+    # authenticate request to make sure admin or self is modifying profile
     if current_admin.get("role") != "admin" and current_admin.get("id") != admin_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -130,7 +130,7 @@ async def enroll_user_face(
             detail="User not found."
         )
 
-    # Parse face image
+    # decode the base64 scan frame
     try:
         face_service = get_face_service()
         img = face_service.decode_base64_image(payload.image)
@@ -153,7 +153,7 @@ async def enroll_user_face(
         "enrolled_at": datetime.datetime.utcnow().isoformat() + "Z"
     }
 
-    # Store face enrollment
+    # save facial embeddings into database
     await db["admin"].update_one(
         {"_id": oid},
         {"$push": {"face_enrollments": enrollment}}

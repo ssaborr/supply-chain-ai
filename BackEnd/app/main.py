@@ -9,12 +9,12 @@ from app.services.anomaly_sync import sync_anomalies_to_db
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: Connect to MongoDB
+    # fire up the MongoDB database connection, dude
     await db_connection.connect_to_database()
-    # Spawn background task to sync KNN/anomaly statuses to sales_orders documents
+    # background task to sync KNN anomaly statuses in MongoDB
     asyncio.create_task(sync_anomalies_to_db(db_connection.db))
     yield
-    # Shutdown: Close MongoDB connection
+    # clean shutdown: disconnect from MongoDB
     await db_connection.close_database_connection()
 
 app = FastAPI(
@@ -26,7 +26,7 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# Set up CORS middleware for the Angular frontend
+# permit CORS requests so local Angular dev server can talk to backend
 origins = [
     "http://localhost",
     "http://localhost:4200",
@@ -43,7 +43,7 @@ app.add_middleware(
 
 )
 
-# Include routes under the /api prefix
+# mount all API routing groups under the /api prefix
 app.include_router(auth.router, prefix="/api")
 app.include_router(users.router, prefix="/api")
 app.include_router(kpis.router, prefix="/api")

@@ -29,18 +29,18 @@ async def query_chatbot(request: ChatRequest, db = Depends(get_db), current_admi
                 "response": "Access Denied: Your user account is not associated with any supplier name. Please contact the administrator."
             }
         
-        # 1. Fetch SKUs supplied by this supplier
+        # grab all the SKUs this supplier is responsible for
         async for p in db["purchases"].find({"Supplier": supplier_name}):
             for line in p.get("purchase_lines", []):
                 sku = line.get("product_sku")
                 if sku is not None:
                     supplier_skus.add(int(sku))
                     
-        # 2. Fetch related sales order IDs
+        # find the downstream sales orders linked to those SKUs
         async for o in db["sales_orders"].find({"order_lines.product_sku": {"$in": list(supplier_skus)}}):
             supplier_order_ids.add(int(o["id"]))
 
-    # Special mockup response for SO #41241 (restricted to non-suppliers)
+    # hacky easter-egg: mockup info for SO #41241. Don't show to suppliers though!
     if "41241" in message and not is_supplier:
         return {
             "response": (
@@ -51,17 +51,17 @@ async def query_chatbot(request: ChatRequest, db = Depends(get_db), current_admi
             )
         }
 
-    # Logistics reminder email generator (restricted to admins)
+    # email generator: only let admins trigger email spam to late suppliers
     action_verbs = ["send", "envoie", "envoyer", "write", "rédige", "rédiger", "remind", "relance", "relancer"]
     mail_nouns = ["mail", "email", "e-mail", "courriel"]
     is_reminder_request = any(w in message_lower for w in ["relance", "remind", "relancer"]) or (
         any(v in message_lower for v in action_verbs) and any(n in message_lower for n in mail_nouns)
     )
     if is_reminder_request and not is_supplier:
-        # 1. Fetch all distinct suppliers
+        # load distinct supplier names from the database
         all_suppliers = await db["purchases"].distinct("Supplier")
         
-        # 2. Check if a specific supplier is mentioned in the query
+        # parse the prompt to see if the user named a supplier
         matched_supplier = None
         for sup in all_suppliers:
             words = sup.lower().split()
@@ -71,7 +71,7 @@ async def query_chatbot(request: ChatRequest, db = Depends(get_db), current_admi
                 matched_supplier = sup
                 break
                 
-        # 3. If no supplier is mentioned, default to the one with the most delays in purchase orders
+        # no supplier named? default to the slacker with the most delays
         if not matched_supplier:
             delayed_counts = {}
             async for p in db["purchases"].find():
@@ -84,7 +84,7 @@ async def query_chatbot(request: ChatRequest, db = Depends(get_db), current_admi
             if delayed_counts:
                 matched_supplier = max(delayed_counts, key=delayed_counts.get)
                 
-        # 4. If we have a supplier, find their delayed purchase orders
+        # fetch the late purchase orders for this specific partner
         if matched_supplier:
             late_orders = []
             async for p in db["purchases"].find({"Supplier": matched_supplier}):
@@ -104,17 +104,17 @@ async def query_chatbot(request: ChatRequest, db = Depends(get_db), current_admi
                         "lines": late_lines
                     })
                     
-            # Format the late orders context if present
+            # format list of delayed orders for context injection
             formatted_list = ""
             if late_orders:
                 for order in late_orders:
                     lines_str = ", ".join([f"SKU #{l['sku']} ({l['delay']} days delayed)" for l in order["lines"]])
                     formatted_list += f"- Order **{order['id']}** on {order['date']} : {lines_str}\n"
 
-            # Check if query is about delays/orders
+            # routing logic: decide if we are talking about delivery delays
             is_late_delivery_related = any(w in message_lower for w in ["delay", "late", "retard", "livraison", "delivery", "order", "commande", "SO", "shipment"])
             
-            # Construct the prompt for Ollama dynamically using the user's instructions
+            # build the LLM prompt with local RAG context
             prompt = (
                 f"Write a professional business email or reminder in English to the supplier '{matched_supplier}'.\n"
                 f"The user's query is: '{message}'\n\n"
@@ -151,7 +151,7 @@ async def query_chatbot(request: ChatRequest, db = Depends(get_db), current_admi
             except Exception:
                 pass
             
-            # Smart fallback if Ollama is offline or fails
+            # fallback: if local Ollama is sleeping, use rule-based template so the user gets an answer
             if not email_text:
                 if "meeting" in message_lower or "réunion" in message_lower:
                     email_text = (
@@ -191,11 +191,11 @@ async def query_chatbot(request: ChatRequest, db = Depends(get_db), current_admi
                             f"**Supply Chain & Procurement Team**"
                         )
             
-            # Dispatch the email via SMTP (real or simulated fallback)
+            # try sending the email over SMTP, otherwise print it to logs
             supplier_user = await db["admin"].find_one({"supplier_name": matched_supplier})
             to_email = supplier_user.get("email") if (supplier_user and supplier_user.get("email")) else f"{matched_supplier.lower().replace(' ', '')}@supplychain-partner.com"
             
-            # Parse subject from generated email text if possible, else default
+            # regex out the subject line from the LLM output
             subject = f"Important Reminder - {matched_supplier}"
             for line in email_text.split('\n'):
                 if line.lower().startswith("**subject:**") or line.lower().startswith("subject:"):
@@ -225,12 +225,12 @@ async def query_chatbot(request: ChatRequest, db = Depends(get_db), current_admi
             }
 
     
-    # Extract order IDs from query (up to 8 digits)
+    # extract digits for order lookups, up to 8 chars
     order_id_match = re.search(r'\b(?:SO|order|purchase\s*order)?\s*#?\s*(\d{1,8})\b', message_lower)
     order_id = None
     pre_context = {}
     
-    # If no SO/order prefix, fallback to standalone number lookup, ignoring timestamps like HH:MM
+    # fallback number lookup (ignores time formats like HH:MM)
     if not order_id_match:
         cleaned_msg = re.sub(r'\b\d+:\d+\b', '', message)
         standalone_num = re.search(r'\b\d{1,8}\b', cleaned_msg)
@@ -239,10 +239,10 @@ async def query_chatbot(request: ChatRequest, db = Depends(get_db), current_admi
     else:
         order_id = int(order_id_match.group(1))
 
-    # Pre-retrieve context (RAG)
+    # RAG: pre-load context before entering ReAct loop
     try:
         if is_supplier:
-            # Supplier stats/context only
+            # check if query only targets supplier performance stats
             pre_context["stats"] = {
                 "total_orders": await db["sales_orders"].count_documents({"order_lines.product_sku": {"$in": list(supplier_skus)}}),
                 "total_anomalies": await db["anomalies"].count_documents({"sales_order_id": {"$in": list(supplier_order_ids)}}),
@@ -263,7 +263,7 @@ async def query_chatbot(request: ChatRequest, db = Depends(get_db), current_admi
             pre_context["kpis"] = [{"name": k["name"], "value": k["value"], "description": k["description"]} async for k in kpis_cursor]
         
         if order_id is not None:
-            # Enforce supplier check on order
+            # security check: suppliers cannot snoop on other suppliers' orders
             if is_supplier:
                 order_data = await db["sales_orders"].find_one({
                     "id": order_id,
@@ -285,7 +285,7 @@ async def query_chatbot(request: ChatRequest, db = Depends(get_db), current_admi
         sku_match = re.search(r'\bsku\s*#?(\d+)\b', message_lower) or re.search(r'\bproduct\s*#?(\d+)\b', message_lower)
         if sku_match:
             sku_id = int(sku_match.group(1))
-            # Enforce supplier check on product
+            # security check: suppliers cannot snoop on other suppliers' inventory
             if is_supplier:
                 if sku_id in supplier_skus:
                     prod_data = await db["products"].find_one({"sku": sku_id})
@@ -298,7 +298,7 @@ async def query_chatbot(request: ChatRequest, db = Depends(get_db), current_admi
                 prod_data.pop("_id", None)
                 pre_context["product"] = prod_data
                 
-        # Check if query contains any known supplier name to pre-retrieve
+        # scan query for known partner names to pre-load metrics
         if not is_supplier:
             all_suppliers = await db["purchases"].distinct("Supplier")
             matched_supplier = None
@@ -324,7 +324,7 @@ async def query_chatbot(request: ChatRequest, db = Depends(get_db), current_admi
     except Exception as e:
         pre_context["db_error"] = str(e)
 
-    # ReAct agent system prompt
+    # system prompt for the ReAct loop (Reasoning + Action)
     if is_supplier:
         system_prompt = (
             f"You are the 'Supplier Portal AI Assistant' for '{supplier_name}'.\n"
@@ -413,7 +413,7 @@ async def query_chatbot(request: ChatRequest, db = Depends(get_db), current_admi
     except Exception:
         pass
 
-    # ReAct Loop: Execute requested DB query if present
+    # ReAct loop: if LLM generated a DB query tool call, execute it
     if "DB_QUERY:" in llm_response:
         try:
             query_line = [line for line in llm_response.split('\n') if "DB_QUERY:" in line][0]
@@ -426,7 +426,7 @@ async def query_chatbot(request: ChatRequest, db = Depends(get_db), current_admi
             
             query_result = None
             
-            # Enforce supplier check on DB_QUERY filters
+            # intercept raw SQL/NoSQL queries to block supplier data leaks
             allowed_collections = ["sales_orders", "anomalies", "products"] if is_supplier else ["sales_orders", "anomalies", "products", "client", "kpis", "purchases"]
             
             if collection in allowed_collections:
@@ -454,7 +454,7 @@ async def query_chatbot(request: ChatRequest, db = Depends(get_db), current_admi
                     count = await db[collection].count_documents(db_filter)
                     query_result = {"count": count}
 
-                # Step 2: Feed DB results back to LLM for final answer
+                # feed DB results back to LLM for final answer
                 second_prompt = (
                     f"{system_prompt}\n\n"
                     f"User Query: {message}\n"
@@ -480,7 +480,7 @@ async def query_chatbot(request: ChatRequest, db = Depends(get_db), current_admi
     if llm_response and "DB_QUERY:" not in llm_response:
         return {"response": llm_response}
 
-    # Fallback response using pre_context (offline mode / error)
+    # offline mode: use RAG context directly if LLM failed
     stats = pre_context.get("stats", {})
     if order_id is not None:
         if "sales_orders" in pre_context:
@@ -552,7 +552,7 @@ async def query_chatbot(request: ChatRequest, db = Depends(get_db), current_admi
                 "response": f"We are currently tracking a total of **{stats.get('total_orders', 0)}** customer sales orders related to your products."
             }
         return {
-            "response": f"The database currently records a total of **{stats.get('total_orders', 500)}** sales orders."
+            "response": f"The database currently records a total of **{stats.get('total_orders')}** sales orders."
         }
     elif "anomaly" in message_lower and ("count" in message_lower or "how many" in message_lower or "total" in message_lower):
         if is_supplier:

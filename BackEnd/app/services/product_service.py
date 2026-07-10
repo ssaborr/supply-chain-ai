@@ -6,7 +6,7 @@ logger = logging.getLogger(__name__)
 
 async def generate_cluster_summary(db) -> str:
     try:
-        # Helper to get statistics for a specific cluster
+        # helper to aggregate stats (count, price, stock) for a specific product cluster, dude
         async def get_cluster_stats(cluster_name: str):
             pipeline = [
                 {"$match": {"cluster": cluster_name}},
@@ -35,7 +35,7 @@ async def generate_cluster_summary(db) -> str:
         
         total_count = hv["count"] + vd["count"] + lp["count"]
 
-        # If database is completely empty
+        # handle empty db gracefully, dude
         if total_count == 0:
             return "No product clustering data available. Please run the K-Means training script."
 
@@ -61,7 +61,7 @@ async def generate_cluster_summary(db) -> str:
         except Exception:
             pass
 
-        # Fallback rule-based summary
+        # fallback text if LLM summary generation fails
         return (
             f"K-Means clustering has segmented our catalog of {total_count} products into three distinct performance tiers. "
             f"The High Value tier contains {hv['count']} premium items averaging ${hv['avg_price']:.2f} each. "

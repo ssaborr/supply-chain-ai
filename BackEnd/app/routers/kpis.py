@@ -99,7 +99,7 @@ def _split_orders_by_recent_months(all_orders, parse_date):
         if prev_key in by_month:
             return by_month[cur_key], by_month[prev_key]
 
-    # No consecutive month pair (e.g. isolated outlier months only).
+    # skip adjacent months to avoid seasonal bias, dude
     return by_month[sorted_months[-1]], []
 
 
@@ -192,15 +192,15 @@ async def get_executive_summary(db = Depends(get_db), current_admin: dict = Depe
             except Exception:
                 return None
 
-    # 1. Fetch all sales orders — dashboard KPIs reflect the full database.
+    # fetch everything: dashboard KPIs reflect full dataset
     all_orders = []
     async for doc in db["sales_orders"].find():
         all_orders.append(doc)
 
-    # Month-over-month slices use the two most recent months that actually have orders.
+    # slice MoM trends using the 2 most recent active months
     orders_cur, orders_last = _split_orders_by_recent_months(all_orders, parse_date)
 
-    # 2. Fetch products to calculate total catalog count and stockout rate.
+    # query products collection to calculate active stockout rate
     products = []
     async for doc in db["products"].find():
         products.append(doc)
@@ -215,7 +215,7 @@ async def get_executive_summary(db = Depends(get_db), current_admin: dict = Depe
             orders_cur, products, zero_baseline=True
         )["changes"]
 
-    # Prepare response summary using current health metric.
+    # bundle up the metrics and prompt the AI analyst
     health = computed["health"]
     otif = computed["otif"]
     avg_lead = computed["avg_lead"]
@@ -226,7 +226,7 @@ async def get_executive_summary(db = Depends(get_db), current_admin: dict = Depe
     total_products = computed["total_products"]
     changes = computed["changes"]
     
-    # Formulate Prompt for Ollama
+    # cook up prompt for Ollama/LLM
     prompt = (
         f"You are a supply chain dashboard analyst. Write a professional executive summary of the business operations based on these calculated metrics:\n"
         f"- Global Supply Chain Health: {health:.1f}%\n"
@@ -256,7 +256,7 @@ async def get_executive_summary(db = Depends(get_db), current_admin: dict = Depe
         pass
         
     if not summary_text:
-        # Fallback summary
+        # backup summary if Ollama falls offline
         summary_text = (
             f"Business operations are running stable with a Global Supply Chain Health score of {health:.1f}%, supported by an OTIF Service Level of {otif:.1f}%. "
             f"Active stockouts are contained at {stockout_rate:.1f}%, keeping delivery lead times at a stable average of {avg_lead:.1f} days. "

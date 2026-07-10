@@ -14,6 +14,9 @@ class ProductBase(BaseModel):
     prep_delay: Optional[int] = 4
     internal_delay: Optional[int] = 0
     transport_delay: Optional[int] = 0
+    rec_prep_delay: Optional[int] = None
+    rec_internal_delay: Optional[int] = None
+    rec_transport_delay: Optional[int] = None
 
 class ProductCreate(ProductBase):
     pass

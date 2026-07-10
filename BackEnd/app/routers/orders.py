@@ -151,7 +151,7 @@ async def explain_order(order_id: int, db = Depends(get_db), current_admin: dict
     profit_margin = doc.get("order_profit", 0.0) / total_sales
     delay_delta = doc.get("real_shipment", 0) - doc.get("scheduled_shipment", 0)
 
-    # Simulated SHAP values
+    # generate simulated SHAP feature attribution values, dude
     delay_val = int(delay_delta * 12) if delay_delta > 0 else -10
     qty_val = int(min(45, total_quantity * 0.4)) if total_quantity > 80 else -15
     history_val = -20 if doc.get("client_id", 0) % 3 == 0 else 25
@@ -228,7 +228,7 @@ async def update_order_verdict(order_id: int, payload: dict, db = Depends(get_db
 
 @router.get("/discount-analysis")
 async def get_discount_analysis(db = Depends(get_db), current_admin: dict = Depends(get_current_admin)):
-    # Get product discounts
+    # get discount distributions across products
     products_map = {int(p["sku"]): p.get("discount", 0.0) async for p in db["products"].find()}
     
     revenue_data = [0.0] * 7
@@ -243,7 +243,7 @@ async def get_discount_analysis(db = Depends(get_db), current_admin: dict = Depe
         discounts = [products_map[l["product_sku"]] for l in lines if l.get("product_sku") in products_map]
         discount_ratio = sum(discounts) / len(discounts) if discounts else 0.0
         
-        # Bins: 0% to 30%+
+        # bin discount percentages into standard range buckets
         if discount_ratio < 0.025:
             bin_idx = 0
         elif discount_ratio < 0.075:
@@ -322,7 +322,7 @@ async def validate_orders_endpoint(
     required_cols = ['order_id', 'customer_id', 'order_date', 'status', 'quantity', 'unit_price', 'product_sku']
     missing = [c for c in required_cols if c not in df.columns]
     if missing:
-        # map back to standard names
+        # map features back to standard UI labels
         reverse_mapping = {
             'order_id': 'Order Id',
             'customer_id': 'Customer Id',

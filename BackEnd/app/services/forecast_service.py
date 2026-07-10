@@ -14,7 +14,7 @@ def get_model_path() -> str:
     project_root = os.path.dirname(os.path.dirname(os.path.dirname(current_dir)))
     return os.path.join(project_root, "processed_data", "arima_model.pkl")
 
-# Lock to avoid concurrent retraining per product
+# thread lock to prevent double-training collision for the same item
 _product_locks = {}
 _lock_registry_lock = asyncio.Lock()
 
@@ -30,7 +30,7 @@ async def retrain_demand_forecast(db, product_id: Optional[int] = None):
     try:
         logger.info(f"Starting Prophet model retraining for product_id={product_id} in background task...")
         
-        # Fetch records where sales is not null
+        # get historical sales records
         query = {"sales": {"$ne": None}}
         if product_id is not None:
             if product_id == 0:
@@ -48,7 +48,7 @@ async def retrain_demand_forecast(db, product_id: Optional[int] = None):
             return
             
         if product_id == 0:
-            # Aggregate daily sales across active reporting products (>= 5 active)
+            # sum up daily volume if we have at least 5 reporting items
             from collections import defaultdict
             date_to_products = defaultdict(set)
             date_to_sales = defaultdict(float)
@@ -71,7 +71,7 @@ async def retrain_demand_forecast(db, product_id: Optional[int] = None):
         df = df.sort_values(by="ds").reset_index(drop=True)
         df = df.groupby("ds").agg({"y": "sum"}).reset_index()
 
-        # Store aggregate demand historical sales under product_id=0
+        # save global aggregate demand stats with product_id=0
         if product_id == 0:
             logger.info("Upserting aggregated historical sales into forecasts collection...")
             await db["forecasts"].delete_many({"product_id": 0})
@@ -88,16 +88,16 @@ async def retrain_demand_forecast(db, product_id: Optional[int] = None):
             if hist_docs:
                 await db["forecasts"].insert_many(hist_docs)
         
-        # Keep up to 365 days of history for per-product models (enough for yearly seasonality)
-        # Global (product_id=0) always keeps full history
+        # trim historical tail to 365 days for individual models to capture seasonality
+        # keep full history for global aggregate model
         if product_id != 0 : #hook here remeber for issues in forecast
             logger.info(f"Limiting historical records from {len(df)} to the most recent 365 days.")
       
         
-        # Clip negative y values, keep raw scale for better variance and peak capturing
+        # clamp negative values, keep raw scale for peaks
         df["y"] = df["y"].clip(lower=0.0)
         
-        # Fit ARIMA model in background thread
+        # run ARIMA fitting in a background thread to keep backend responsive
         logger.info(f"Fitting ARIMA model on {len(df)} records for product_id={product_id}...")
         
         df_ts = df.set_index("ds")
@@ -115,7 +115,7 @@ async def retrain_demand_forecast(db, product_id: Optional[int] = None):
             model = ARIMA(df_ts["y"], order=(1, 1, 1), seasonal_order=seasonal_order)
             model_fit = await asyncio.to_thread(model.fit)
             
-            # Predict up to 2026-12-31
+            # forecast out to the end of Q4 2026
             max_hist_date = df['ds'].max()
             target_end_date = pd.to_datetime("2026-12-31")
             if max_hist_date < target_end_date:
@@ -125,7 +125,7 @@ async def retrain_demand_forecast(db, product_id: Optional[int] = None):
                 
             forecast_res = await asyncio.to_thread(model_fit.forecast, steps=periods)
             
-            # Seed based on product_id to ensure deterministic wavy pattern matching historical std
+            # seed random number generator deterministically for uniform forecast jitter
             np.random.seed(int(product_id) if product_id is not None else 42)
             resid_std = float(np.std(model_fit.resid)) if hasattr(model_fit, "resid") else 10.0
             noise = np.random.normal(0, resid_std * 0.4, size=len(forecast_res))
@@ -139,7 +139,7 @@ async def retrain_demand_forecast(db, product_id: Optional[int] = None):
                 "yhat": yhat_vals
             })
 
-            # Save serialized ARIMA model *after* forecasting to prevent endog deletion error
+            # serialize the model object to disk, dude
             model_path = get_model_path()
             if product_id is not None:
                 model_path = model_path.replace("arima_model.pkl", f"arima_model_{product_id}.pkl")
@@ -170,14 +170,14 @@ async def retrain_demand_forecast(db, product_id: Optional[int] = None):
                 "yhat": yhat_vals
             })
 
-            # Save serialized ARIMA model *after* forecasting to prevent endog deletion error
+            # serialize the model object to disk, dude
             model_path = get_model_path()
             if product_id is not None:
                 model_path = model_path.replace("arima_model.pkl", f"arima_model_{product_id}.pkl")
             os.makedirs(os.path.dirname(model_path), exist_ok=True)
             await asyncio.to_thread(model_fit.save, model_path, remove_data=True)
             
-        # Build future forecast docs
+        # construct new forecast documents
         new_future_docs = []
         for _, row in forecast_df.iterrows():
             date_str = row['ds'].strftime('%Y-%m-%d')
@@ -206,7 +206,7 @@ async def generate_forecast_explanation(db, product_id: int) -> str:
     import httpx
     
     try:
-        # Ensure at least 90 future forecasts exist
+        # guarantee at least a 3-month forecast window
         future_count = await db["forecasts"].count_documents({"product_id": product_id, "sales": None})
         if future_count < 90:
             hist_count = await db["forecasts"].count_documents({"product_id": product_id, "sales": {"$ne": None}})
@@ -220,7 +220,7 @@ async def generate_forecast_explanation(db, product_id: int) -> str:
         
         product_name = product.get("name", "Unknown Product")
         
-        # Fetch history and forecasts for Sep-Dec 2026 window
+        # query Q4 2026 forecast window
         query = {
             "product_id": product_id,
             "date": {"$gte": "2026-09-01", "$lte": "2026-12-31"}

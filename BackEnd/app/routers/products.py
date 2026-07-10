@@ -65,8 +65,7 @@ async def list_forecasts(
             hist_count = await db["forecasts"].count_documents({"product_id": product_id, "sales": {"$ne": None}})
             if hist_count >= 2:
                 RETRAINED_PRODUCTS.add(product_id)
-                # Fire-and-forget: return existing data immediately, train in background.
-                # The frontend loading state will poll and load the updated flexible forecast in 8s.
+                # Trigger asynchronous model retraining in the background to avoid blocking the API response
                 background_tasks.add_task(retrain_demand_forecast, db, product_id)
     return [{**doc, "id": str(doc.pop("_id"))} async for doc in db["forecasts"].find(query).sort("date", 1).limit(limit)]
 
@@ -81,7 +80,6 @@ async def trigger_retrain(background_tasks: BackgroundTasks, product_id: Optiona
 
 @router.get("/discount-revenue")
 async def get_discount_revenue(db = Depends(get_db), current_admin: dict = Depends(get_current_admin)):
-    # 1. Aggregate revenue by product SKU from sales_orders
     pipeline = [
         {"$unwind": "$order_lines"},
         {"$group": {
@@ -95,7 +93,6 @@ async def get_discount_revenue(db = Depends(get_db), current_admin: dict = Depen
         sku = doc["_id"]
         order_revenues[sku] = doc["revenue"]
         
-    # 2. Match with product details
     results = []
     async for p in db["products"].find():
         sku = p.get("sku")
@@ -132,3 +129,13 @@ async def update_product_delays(sku: int, payload: ProductDelaysUpdate, db = Dep
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Product not found")
     return {"message": "Product delays updated successfully"}
+
+
+from app.services.delay_service import train_delay_model
+
+@router.post("/train-delays")
+async def trigger_train_delays(db = Depends(get_db), current_admin: dict = Depends(get_current_admin)):
+    res = await train_delay_model(db)
+    if res.get("status") == "error":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=res.get("message"))
+    return res

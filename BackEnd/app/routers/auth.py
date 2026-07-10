@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
-# Cosine similarity threshold
+# similarity threshold for face matches, keep it strict
 FACE_MATCH_THRESHOLD = 0.60
 
 class FaceLoginRequest(BaseModel):
@@ -35,7 +35,7 @@ async def login(login_data: LoginRequest, db = Depends(get_db)):
             detail="Incorrect email or password"
         )
         
-    # Force face scan for suppliers
+    # face scan is mandatory for supplier portal access, dude
     if admin.get("role") == "supplier":
         enrollments = admin.get("face_enrollments", [])
         if not enrollments:
@@ -59,7 +59,7 @@ async def login_face(payload: FaceLoginRequest, db = Depends(get_db)):
             detail="Database connection is not initialized"
         )
 
-    # Parse face image
+    # parse the base64 scan data frame
     try:
         face_service = get_face_service()
         img = face_service.decode_base64_image(payload.image)
@@ -80,7 +80,7 @@ async def login_face(payload: FaceLoginRequest, db = Depends(get_db)):
     matched_user = None
 
     if payload.email:
-        # 1-to-1 verify
+        # 1-to-1 verification against enrolled face template
         email_clean = payload.email.lower()
         user = await db["admin"].find_one({"email": email_clean})
         if not user:
@@ -106,7 +106,7 @@ async def login_face(payload: FaceLoginRequest, db = Depends(get_db)):
         if best_sim >= FACE_MATCH_THRESHOLD:
             matched_user = user
     else:
-        # 1-to-many match
+        # 1-to-many matching fallback across all usersing fallback across all users
         best_overall_sim = -1.0
         best_overall_user = None
         
@@ -128,13 +128,13 @@ async def login_face(payload: FaceLoginRequest, db = Depends(get_db)):
             detail="Face not recognized or matching enrollment not found."
         )
 
-    # Issue JWT
+    # sign token using HS256 to issue JWT, dude
     access_token = create_access_token(subject=str(matched_user["_id"]))
     return {"access_token": access_token, "token_type": "bearer"}
 
 @router.get("/me", response_model=AdminOut)
 async def read_admin_me(current_admin: dict = Depends(get_current_admin)):
-    # Check face enrollment status
+    # check if they have registered biometrics yet
     enrollments = current_admin.get("face_enrollments", [])
     current_admin["has_face_enrolled"] = len(enrollments) > 0
     return current_admin

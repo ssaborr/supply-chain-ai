@@ -14,7 +14,7 @@ class DatabaseConnection:
         self.client = AsyncIOMotorClient(settings.MONGODB_URI)
         self.db = self.client[settings.DATABASE_NAME]
         try:
-            # The ping command is cheap and checks if the client can connect
+            # ping MongoDB to make sure the connection is alive and kicking, dude
             await self.client.admin.command('ping')
             logger.info("MongoDB connection established successfully.")
         except Exception as e:

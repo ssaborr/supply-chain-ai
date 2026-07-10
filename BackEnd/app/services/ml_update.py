@@ -30,7 +30,7 @@ async def rebuild_ml_datasets_from_db(db):
     logger.info("Rebuilding ML datasets from MongoDB...")
     paths = get_paths()
     
-    # 1. Load products mapping
+    # load up the products catalog map, dude
     products_map = {}
     async for p in db["products"].find():
         sku = int(p["sku"])
@@ -42,7 +42,7 @@ async def rebuild_ml_datasets_from_db(db):
             "department_id": p.get("department_id", "0")
         }
         
-    # 2. Retrieve sales orders
+    # fetch transactional sales orders data from DB
     orders = []
     async for doc in db["sales_orders"].find():
         orders.append(doc)
@@ -51,7 +51,7 @@ async def rebuild_ml_datasets_from_db(db):
         logger.warning("No sales orders in database. Skipping dataset generation.")
         return
         
-    # 3. Process Anomaly Features
+    # feature engineering: calculate sales, profit margin, delay delta, and discount ratios
     anomaly_records = []
     item_rows = []
     
@@ -104,7 +104,7 @@ async def rebuild_ml_datasets_from_db(db):
     df_anomaly = pd.DataFrame(anomaly_records)
     df_anomaly.to_csv(paths["anomaly_raw"], index=False)
     
-    # Scale anomaly features
+    # scale features using StandardScaler so the model doesn't bias large numbers
     anomaly_cols = ['delay_delta', 'Order Item Quantity', 'Sales', 'profit_margin', 'discount_ratio']
     if len(df_anomaly) > 1:
         scaler = StandardScaler()
@@ -117,7 +117,7 @@ async def rebuild_ml_datasets_from_db(db):
     else:
         df_anomaly.to_csv(paths["anomaly_scaled"], index=False)
         
-    # 4. Customer RFM Segmentation
+    # calculate Recency, Frequency, and Monetary metrics per customer
     df_items = pd.DataFrame(item_rows)
     rfm_records = []
     
@@ -197,7 +197,7 @@ async def rebuild_ml_datasets_from_db(db):
         ).reset_index()
         global_demand.to_csv(paths["global_demand"], index=False)
         
-        # 6. Product ML features (for safety stock)
+        # calculate monthly sales volume, demand standard deviation, and CV
         prod_stats = df_items.groupby('product_id').agg(
             demand_mean=('quantity', 'mean'),
             demand_std=('quantity', 'std'),
@@ -240,31 +240,31 @@ async def retrain_all_models_task(db):
         python_bin = sys.executable
         paths = get_paths()
         
-        # Retrain KMeans
+        # trigger K-Means retraining script for segmentation
         kmeans_script = os.path.join(paths["project_root"], "train_kmeans.py")
         if os.path.exists(kmeans_script):
             logger.info("Retraining KMeans product clusters...")
             await run_subprocess_async([python_bin, kmeans_script])
         
-        # Retrain KNN
+        # trigger KNN retraining script for fraud detection
         knn_script = os.path.join(paths["project_root"], "train_knn_optimized.py")
         if os.path.exists(knn_script):
             logger.info("Retraining KNN fraud detector...")
             await run_subprocess_async([python_bin, knn_script])
             
-        # Retrain LightGBM
+        # trigger LightGBM retraining script for anomaly detection
         lgb_script = os.path.join(paths["project_root"], "train_lgb_optimized.py")
         if os.path.exists(lgb_script):
             logger.info("Retraining LightGBM fraud detector...")
             await run_subprocess_async([python_bin, lgb_script])
             
-        # Retrain ARIMA Global demand forecast
+        # trigger global ARIMA retraining script
         global_forecast_script = os.path.join(paths["project_root"], "BackEnd", "train_global.py")
         if os.path.exists(global_forecast_script):
             logger.info("Retraining ARIMA global demand forecast...")
             await run_subprocess_async([python_bin, global_forecast_script])
             
-        # Retrain ARIMA for Top 5 Products
+        # trigger ARIMA retraining script for top-selling products
         # Find top 5 product SKUs by sales volume from the database
         pipeline = [
             {"$unwind": "$order_lines"},
@@ -282,10 +282,15 @@ async def retrain_all_models_task(db):
             logger.info(f"Retraining ARIMA forecast for product SKU {sku}...")
             await retrain_demand_forecast(db, int(sku))
             
-        # Sync anomaly statuses to sales orders in DB using the newly trained LightGBM model
+        # run anomaly sync to update sales orders collections in DB
         from app.services.anomaly_sync import sync_anomalies_to_db
         logger.info("Syncing newly calculated anomaly statuses to DB...")
         await sync_anomalies_to_db(db)
+
+        # Train delay prediction model
+        from app.services.delay_service import train_delay_model
+        logger.info("Retraining delay prediction model...")
+        await train_delay_model(db)
         
         logger.info("ML and Forecasting retraining pipeline completed successfully.")
         

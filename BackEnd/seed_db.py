@@ -18,7 +18,7 @@ def seed_database():
     client = MongoClient(settings.MONGODB_URI)
     db = client[settings.DATABASE_NAME]
 
-    # --- 1. Seed 'admin' Collection ---
+    # seed default admin credentials, yo
     logger.info("Seeding admin collection...")
     db["admin"].delete_many({})
     admins = [
@@ -47,7 +47,7 @@ def seed_database():
     ]
     db["admin"].insert_many(admins)
 
-    # --- 2. Seed 'client' Collection (rfm_score included) ---
+    # seed customers collection with RFM stats, dude
     rfm_path = r"c:\Users\Sabor\Desktop\project\processed_data\rfm_features_raw.csv"
     client_ids = []
     if os.path.exists(rfm_path):
@@ -94,7 +94,7 @@ def seed_database():
             db["client"].insert_many(client_docs)
             logger.info(f"Seeded {len(client_docs)} client records.")
 
-    # --- 3. Extract and Seed 'departments' and 'products' (SKU as key) from Raw Dataset ---
+    # parse raw CSV to extract department list and products catalog, dude
     raw_dataset_path = r"c:\Users\Sabor\Desktop\project\DataCoSupplyChainDataset.csv"
     if os.path.exists(raw_dataset_path):
         logger.info("Extracting departments and products from raw dataset...")
@@ -103,7 +103,7 @@ def seed_database():
 
         df_raw = pd.read_csv(raw_dataset_path, encoding='latin-1')
 
-        # Seed Departments
+        # insert unique departments into DB
         df_dept = df_raw[['Department Id', 'Department Name']].drop_duplicates().dropna()
         dept_docs = []
         for _, row in df_dept.iterrows():
@@ -117,7 +117,7 @@ def seed_database():
             db["departments"].insert_many(dept_docs)
             logger.info(f"Seeded {len(dept_docs)} departments.")
 
-        # Seed Products (sku, price, discount, category, current_stock, department_id)
+        # insert products catalog with randomized delays (sku, price, discount, category, current_stock, department_id)
         df_prod = df_raw[['Product Card Id', 'Product Name', 'Product Price', 'Order Item Discount Rate', 'Category Name', 'Department Id']].drop_duplicates(subset=['Product Card Id']).dropna()
         product_docs = []
         for _, row in df_prod.iterrows():
@@ -134,15 +134,15 @@ def seed_database():
             db["products"].insert_many(product_docs)
             logger.info(f"Seeded {len(product_docs)} products.")
 
-        # --- 4. Seed 'sales_orders' and 'anomalies' ---
+        # extract transactional sales orders and anomalies from dataset
         logger.info("Extracting transactional sales orders and anomalies...")
         db["sales_orders"].delete_many({})
         db["anomalies"].delete_many({})
 
-        # Take a subset of orders (first 1000 rows representing unique transactions)
+        # load subset of 500 order transactions (first 1000 rows representing unique transactions)
         df_orders_subset = df_raw.head(2000).copy()
         
-        # Group by Order Id
+        # group raw rows by unique order ID
         order_groups = df_orders_subset.groupby('Order Id')
         order_docs = []
         anomaly_docs = []
@@ -173,7 +173,7 @@ def seed_database():
                         "product_sku": int(row["Product Card Id"])
                     })
                 
-                # Add 1-3 random products to make orders more realistic
+                # inject random line items to simulate normal orders
                 if product_docs:
                     num_extra_items = random.randint(1, 3)
                     for _ in range(num_extra_items):
@@ -197,7 +197,7 @@ def seed_database():
                     "order_lines": lines
                 })
 
-                # Check and Seed Anomalies for this order
+                # create anomalies for suspected fraud or delay
                 is_fraud = 1 if status == "SUSPECTED_FRAUD" else 0
                 if is_fraud == 1:
                     anomaly_docs.append({
@@ -229,7 +229,7 @@ def seed_database():
             db["anomalies"].insert_many(anomaly_docs)
             logger.info(f"Seeded {len(anomaly_docs)} anomalies.")
 
-    # --- 5. Seed 'kpis' Collection ---
+    # calculate historical executive KPIs for dashboard
     logger.info("Seeding kpis collection...")
     db["kpis"].delete_many({})
     kpis = [
@@ -255,7 +255,7 @@ def seed_database():
     db["kpis"].insert_many(kpis)
     logger.info(f"Seeded {len(kpis)} general KPIs.")
 
-    # --- 6. Seed 'insights' Collection ---
+    # generate AI insights summaries for dashboard
     logger.info("Seeding insights collection...")
     db["insights"].delete_many({})
     
@@ -307,7 +307,7 @@ def seed_database():
         db["insights"].insert_many(insights)
         logger.info(f"Seeded {len(insights)} insights.")
 
-    # --- 7. Seed 'purchases' Collection ---
+    # generate mock purchase orders history for supplier portal
     logger.info("Seeding purchases collection...")
     db["purchases"].delete_many({})
     
@@ -370,7 +370,7 @@ def seed_database():
         db["purchases"].insert_many(purchases)
         logger.info(f"Seeded {len(purchases)} purchase orders.")
 
-    # --- 8. Seed 'forecasts' Collection (Daily Demand History + Prophet Pre-training) ---
+    # create daily demand history and pre-train models
     product_demand_path = r"c:\Users\Sabor\Desktop\project\processed_data\product_daily_demand.csv"
     if os.path.exists(product_demand_path):
         logger.info("Loading daily demand records for forecasting...")

@@ -24,12 +24,12 @@ class FaceService:
         available_providers = ort.get_available_providers()
         logger.info(f"Available ONNX Runtime providers: {available_providers}")
         
-        # Use CUDA if available, else CPU
+        # run on GPU via CUDA if available, else fallback to CPU
         provider = 'CUDAExecutionProvider' if 'CUDAExecutionProvider' in available_providers else 'CPUExecutionProvider'
         logger.info(f"Initializing InsightFace with provider: {provider}")
         
         try:
-            # Load buffalo_l SCRFD detector and ArcFace model
+            # initialize insightface Buffalo-L model bundle
             self.model = FaceAnalysis(name='buffalo_l', providers=[provider])
             self.model.prepare(ctx_id=0, det_size=(640, 640))
             self._initialized = True
@@ -44,7 +44,7 @@ class FaceService:
         """
         try:
             if ',' in base64_str:
-                # Strip data URI header
+                # remove standard base64 headers
                 base64_str = base64_str.split(',', 1)[1]
             image_bytes = base64_str.encode('utf-8')
             decoded_bytes = base64.b64decode(image_bytes)
@@ -71,28 +71,28 @@ class FaceService:
             logger.error(f"Error executing face detection: {e}", exc_info=True)
             raise ValueError(f"Face model analysis error: {str(e)}")
 
-        # Reject if no face
+        # zero faces found, throw validation error
         if len(faces) == 0:
             raise ValueError("No face detected in the image.")
 
-        # Reject if multiple faces
+        # multiple faces found, reject to avoid auth injection
         if len(faces) > 1:
             raise ValueError("Multiple faces detected. Please ensure only one face is visible in the frame.")
 
         face = faces[0] #gets face
 
-        # Reject if low detection confidence (<0.65)
+        # verify detection confidence score meets threshold
         if getattr(face, 'det_score', 0.0) < 0.65:
             raise ValueError(f"Face detection confidence too low ({face.det_score:.2f}). Please ensure good lighting.")
 
-        # Reject if face too small (<100px)
+        # reject tiny faces to ensure high quality scan
         bbox = face.bbox.astype(int)
         width = bbox[2] - bbox[0]
         height = bbox[3] - bbox[1]
         if width < 100 or height < 100:
             raise ValueError(f"Face is too small in the frame ({width}x{height}px). Please move closer to the camera (minimum size 100x100px).")
 
-        # Extract and normalize embedding
+        # capture ArcFace 512-D facial embeddings vector
         embedding = face.embedding #embeds face
         norm = np.linalg.norm(embedding)
         if norm > 0:
@@ -105,11 +105,11 @@ class FaceService:
         Computes the cosine similarity between two L2-normalized embedding vectors.
         Because they are already L2-normalized, this is equivalent to the dot product.
         """
-        # Ensure L2-normalized numpy arrays
+        # normalize vectors to unit length
         a = np.array(embedding_a)
         b = np.array(embedding_b)
         
-        # Cosine similarity (dot product)
+        # calculate dot product for similarity
         similarity = float(np.dot(a, b))
         logger.debug(f"Cosine similarity calculated: {similarity:.4f}")
         return similarity

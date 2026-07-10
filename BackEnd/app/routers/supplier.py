@@ -12,7 +12,7 @@ router = APIRouter(prefix="/supplier", tags=["Supplier"])
 @router.get("/list", response_model=List[str])
 async def list_suppliers(db = Depends(get_db), current_admin: dict = Depends(get_current_admin)):
     try:
-        # Fetch distinct supplier names from purchases
+        # grab supplier names from purchase history
         suppliers = await db["purchases"].distinct("Supplier")
         return [s for s in suppliers if s]
     except Exception as e:
@@ -29,7 +29,7 @@ async def get_supplier_dashboard_data(
         user_role = current_admin.get("role")
         user_supplier_name = current_admin.get("supplier_name")
         
-        # Enforce supplier name restriction for supplier users
+        # security: supplier users only view their own stats, dude
         if user_role == "supplier":
             if user_supplier_name:
                 supplier_name = user_supplier_name
@@ -39,7 +39,7 @@ async def get_supplier_dashboard_data(
                     detail="Supplier user has no associated company name"
                 )
         elif not supplier_name:
-            # Fallback for admins/managers testing
+            # admin fallback for testing supplier view
             all_sups = await db["purchases"].distinct("Supplier")
             supplier_name = all_sups[0] if all_sups else "Nike Manufacturing EU"
 
@@ -54,7 +54,7 @@ async def get_supplier_dashboard_data(
                 if sku is not None:
                     supplier_skus.add(int(sku))
 
-        # Calculate average lead time fallback from purchases
+        # compute avg supply lead time for active items
         delays = []
         for p in purchases:
             for line in p.get("purchase_lines", []):
@@ -69,7 +69,7 @@ async def get_supplier_dashboard_data(
             sku = prod.get("sku")
             prod["_id"] = str(prod["_id"])
             
-            # Compute product-specific lead times
+            # calculate safety stock levels based on lead time variance
             prod_lead_times = []
             for p in purchases:
                 for line in p.get("purchase_lines", []):
@@ -80,7 +80,7 @@ async def get_supplier_dashboard_data(
             if L <= 0:
                 L = 10.0
                 
-            # Fetch daily demand to calculate stats
+            # get historical daily demand variance
             demand_sales = []
             async for f in db["forecasts"].find({"product_id": sku}):
                 val = f.get("sales") if f.get("sales") is not None else f.get("forecast")
@@ -96,7 +96,7 @@ async def get_supplier_dashboard_data(
                 mean_d = 15.0
                 std_d = 4.0
                 
-            # Z = 1.65 (95% service level)
+            # Z-score = 1.65 to ensure 95% service rate against stockouts
             Z = 1.65
             safety_stock = int(round(Z * std_d * (L ** 0.5)))
             safety_stock = max(15, safety_stock)  # minimum threshold floor
@@ -129,7 +129,7 @@ async def get_supplier_dashboard_data(
                 })
                 low_stock_count += 1
 
-        # Fetch downstream sales orders containing supplier SKUs
+        # check outgoing orders containing supplier products
         sales_orders = []
         async for order in db["sales_orders"].find({"order_lines.product_sku": {"$in": list(supplier_skus)}}):
             order["mongo_id"] = str(order.pop("_id"))
@@ -151,7 +151,7 @@ async def get_supplier_dashboard_data(
             })
             sales_orders.append(order)
 
-        # Compute KPIs
+        # calculate OTIF rate and lead times for supplier
         total_volume_supplied = 0
         total_supply_cost = 0.0
         on_time_count = 0
@@ -180,7 +180,7 @@ async def get_supplier_dashboard_data(
 
         low_stock_items = [{k: v for k, v in item.items() if k != "_id"} for item in low_stock_items]
 
-        # Generate AI Executive Summary for Supplier
+        # build AI recommendation context for supplier dashboard
         prompt = (
             f"You are a supply chain operations coordinator. Write a brief executive summary reviewing supplier '{supplier_name}' performance:\n"
             f"- Average Lead Time: {avg_lead_time:.1f} days.\n"

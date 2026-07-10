@@ -40,6 +40,6 @@ async def get_current_admin(
     if admin is None:
         raise credentials_exception
         
-    # Convert _id to string
+    # cast ObjectID to string for token encoding
     admin["id"] = str(admin["_id"])
     return admin

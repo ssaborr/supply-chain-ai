@@ -30,7 +30,7 @@ async def sync_anomalies_to_db(db):
         logger.warning("LightGBM anomaly model could not be loaded. Setting delay anomalies based on delay thresholds only.")
     
     try:
-        # Load products for category and discounts
+        # grab catalog categories to compute discount distributions
         products_map = {
             int(p["sku"]): {
                 "category": p.get("category", "Unknown"),
@@ -76,14 +76,14 @@ async def sync_anomalies_to_db(db):
                 }}
             )
             
-            # Sync anomalies
+            # sync ML model decisions back to Mongo db
             if anomaly_status != "valid":
                 anomaly_type = "fraud" if anomaly_status == "unusual" else "delay"
                 anomaly_name = "Suspected Transaction Fraud" if anomaly_type == "fraud" else "Critical Shipping Delay"
                 anomaly_score = -0.88 if anomaly_type == "fraud" else float(-0.1 * delay_delta)
                 anomaly_desc = f"Fraud warning triggered on payment status: {doc.get('status')}." if anomaly_type == "fraud" else f"Shipping took {doc.get('real_shipment')} days vs promised {doc.get('scheduled_shipment')} days."
                 
-                # Avoid duplicate anomalies
+                # check if anomaly already exists before inserting a duplicate
                 exists = await db["anomalies"].find_one({"sales_order_id": doc["id"]})
                 if not exists:
                     await db["anomalies"].insert_one({
