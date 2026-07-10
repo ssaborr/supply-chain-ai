@@ -168,7 +168,7 @@ def seed_database():
                 lines = []
                 for _, row in group.iterrows():
                     lines.append({
-                        "quantity": int(row["Order Item Quantity"]),
+                        "quantity": int(row["Order Item Quantity"]) * 12,
                         "unitPrice": float(row["Product Price"]),
                         "product_sku": int(row["Product Card Id"])
                     })
@@ -179,7 +179,7 @@ def seed_database():
                     for _ in range(num_extra_items):
                         extra_product = random.choice(product_docs)
                         lines.append({
-                            "quantity": random.randint(1, 10),
+                            "quantity": random.randint(1, 10) * 12,
                             "unitPrice": extra_product.get("price", 50.0),
                             "product_sku": extra_product["sku"]
                         })
@@ -236,19 +236,19 @@ def seed_database():
         {
             "name": "OTIF (On-Time In-Full)",
             "description": "Percentage of orders shipped on time and in full quantities",
-            "date": "2017-09-15",
+            "date": "2026-09-15",
             "value": 92.4
         },
         {
             "name": "Average Profit Margin",
             "description": "Average profit margin across active client categories",
-            "date": "2017-09-15",
+            "date": "2026-09-15",
             "value": 15.6
         },
         {
             "name": "Inventory Turnover Rate",
             "description": "Yearly inventory turnover coefficient",
-            "date": "2017-09-15",
+            "date": "2026-09-15",
             "value": 4.8
         }
     ]
@@ -333,7 +333,7 @@ def seed_database():
     # Generate purchases based on product data
     if product_docs:
         for _ in range(min(50, len(product_docs))):
-            purchase_date = f"2017-{random.randint(9, 12):02d}-{random.randint(1, 28):02d}"
+            purchase_date = f"2026-{random.randint(9, 12):02d}-{random.randint(1, 28):02d}"
             
             # Generate 2-5 line items per purchase
             purchase_lines = []
@@ -356,11 +356,11 @@ def seed_database():
                 })
             
             purchases.append({
-                "id": f"PURCH-2017-{purchase_id:03d}",
+                "id": f"PURCH-2026-{purchase_id:03d}",
                 "origin": random.choice(origins),
                 "date": purchase_date,
                 "type": random.choice(purchase_types),
-                "lot": f"LOT-2017-{purchase_id:05d}",
+                "lot": f"LOT-2026-{purchase_id:05d}",
                 "Supplier": random.choice(suppliers),
                 "purchase_lines": purchase_lines
             })
@@ -378,6 +378,61 @@ def seed_database():
         
         df_all = pd.read_csv(product_demand_path)
         df_all['ds'] = pd.to_datetime(df_all['ds'])
+        
+        # Apply structured demand tendencies (distinct product profiles)
+        def apply_product_profile_tendencies(row):
+            pid = int(row['product_id'])
+            dt = row['ds']
+            val = float(row['y'])
+            
+            rem = pid % 8
+            
+            if rem in [0, 4]:
+                # Profile 1a: Low & Steady
+                val *= 2.5
+            elif rem in [2, 6]:
+                # Profile 1b: High & Steady
+                val *= 15.0
+            elif rem in [1, 5]:
+                # Profile 2: Strong weekend peaks, quiet weekdays (weekly peaks)
+                wd = dt.weekday()
+                if wd in [4, 5]: # Friday & Saturday
+                    val *= 30.0
+                else:
+                    val *= 0.5
+            elif rem == 3:
+                # Profile 3: High demand in one specific month, low elsewhere (Sept to Dec peak)
+                peak_month = 9 + (pid % 4)
+                if dt.month == peak_month:
+                    val *= 35.0
+                else:
+                    val *= 1.5
+            else: # rem == 7
+                # Profile 4: High baseline with high variance
+                val *= 12.0
+                
+            return val
+
+        df_all['y_base'] = df_all.apply(apply_product_profile_tendencies, axis=1)
+        
+        # Add profile-specific noise / variance
+        np.random.seed(42)
+        noises = []
+        for idx, row in df_all.iterrows():
+            pid = int(row['product_id'])
+            rem = pid % 8
+            if rem == 7:
+                # Highly volatile random noise (high variance)
+                noises.append(np.random.uniform(0.1, 2.8))
+            elif rem in [0, 2, 4, 6]:
+                # Steady - minimal noise (+/- 3%)
+                noises.append(np.random.uniform(0.97, 1.03))
+            else:
+                # Normal noise
+                noises.append(np.random.uniform(0.85, 1.15))
+                
+        df_all['y'] = (df_all['y_base'] * np.array(noises)).clip(lower=1.0).round()
+        df_all.drop(columns=['y_base'], inplace=True)
         
         df_clean = df_all.groupby(['product_id', 'ds']).agg({'y': 'sum'}).reset_index()
         
@@ -425,8 +480,12 @@ def seed_database():
                 with open(model_path, 'w') as f:
                     f.write(model_to_json(model))
                 
-                # Predict next 90 days
-                future = model.make_future_dataframe(periods=90, include_history=False)
+                # Predict up to 2026-12-31
+                max_hist_date = df_prophet['ds'].max()
+                target_end_date = pd.to_datetime("2026-12-31")
+                periods = max(90, int((target_end_date - max_hist_date).days) + 5)
+                
+                future = model.make_future_dataframe(periods=periods, include_history=False)
                 forecast = model.predict(future)
                 forecast['yhat'] = np.expm1(forecast['yhat']).clip(lower=0.0)
                 
@@ -441,7 +500,7 @@ def seed_database():
                 
                 if future_docs:
                     db["forecasts"].insert_many(future_docs)
-                    logger.info(f"Pre-trained and generated 90 days forecast for product: {name} (ID: {product_id}).")
+                    logger.info(f"Pre-trained and generated forecast up to 2026-12-31 for product: {name} (ID: {product_id}).")
         logger.info("Product forecasting database seeding completed.")
 
     logger.info("Database seeding successfully completed.")

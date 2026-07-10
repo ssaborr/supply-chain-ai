@@ -11,6 +11,9 @@ class ProductBase(BaseModel):
     department_id: str
     monthly_volume: Optional[float] = 0.0
     cluster: Optional[str] = "LOW PERFORMERS"
+    prep_delay: Optional[int] = 4
+    internal_delay: Optional[int] = 0
+    transport_delay: Optional[int] = 0
 
 class ProductCreate(ProductBase):
     pass

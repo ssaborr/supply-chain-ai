@@ -111,21 +111,13 @@ async def retrain_demand_forecast(db, product_id: Optional[int] = None):
             seasonal_order = (0, 0, 0, 0)
             
         try:
+            
             model = ARIMA(df_ts["y"], order=(1, 1, 1), seasonal_order=seasonal_order)
             model_fit = await asyncio.to_thread(model.fit)
             
-            # Save serialized ARIMA model
-            model_path = get_model_path()
-            if product_id is not None:
-                model_path = model_path.replace("arima_model.pkl", f"arima_model_{product_id}.pkl")
-                
-            os.makedirs(os.path.dirname(model_path), exist_ok=True)
-            await asyncio.to_thread(model_fit.save, model_path, remove_data=True)
-            logger.info(f"ARIMA model successfully saved to {model_path}")
-            
-            # Predict up to 2017-12-31
+            # Predict up to 2026-12-31
             max_hist_date = df['ds'].max()
-            target_end_date = pd.to_datetime("2017-12-31")
+            target_end_date = pd.to_datetime("2026-12-31")
             if max_hist_date < target_end_date:
                 periods = max(92, int((target_end_date - max_hist_date).days) + 5)
             else:
@@ -146,19 +138,21 @@ async def retrain_demand_forecast(db, product_id: Optional[int] = None):
                 "ds": forecast_res.index,
                 "yhat": yhat_vals
             })
-        except Exception as inner_ex:
-            logger.warning(f"ARIMA seasonal fit failed for product {product_id}: {inner_ex}. Falling back to simple ARIMA(1,1,1)...")
-            model = ARIMA(df_ts["y"], order=(1, 1, 1))
-            model_fit = await asyncio.to_thread(model.fit)
-            
+
+            # Save serialized ARIMA model *after* forecasting to prevent endog deletion error
             model_path = get_model_path()
             if product_id is not None:
                 model_path = model_path.replace("arima_model.pkl", f"arima_model_{product_id}.pkl")
             os.makedirs(os.path.dirname(model_path), exist_ok=True)
             await asyncio.to_thread(model_fit.save, model_path, remove_data=True)
+            logger.info(f"ARIMA model successfully saved to {model_path}")
+        except Exception as inner_ex:
+            logger.warning(f"ARIMA seasonal fit failed for product {product_id}: {inner_ex}. Falling back to simple ARIMA(1,1,1)...")
+            model = ARIMA(df_ts["y"], order=(1, 1, 1))
+            model_fit = await asyncio.to_thread(model.fit)
             
             max_hist_date = df['ds'].max()
-            target_end_date = pd.to_datetime("2017-12-31")
+            target_end_date = pd.to_datetime("2026-12-31")
             periods = max(92, int((target_end_date - max_hist_date).days) + 5) if max_hist_date < target_end_date else 92
             
             forecast_res = await asyncio.to_thread(model_fit.forecast, steps=periods)
@@ -175,6 +169,13 @@ async def retrain_demand_forecast(db, product_id: Optional[int] = None):
                 "ds": forecast_res.index,
                 "yhat": yhat_vals
             })
+
+            # Save serialized ARIMA model *after* forecasting to prevent endog deletion error
+            model_path = get_model_path()
+            if product_id is not None:
+                model_path = model_path.replace("arima_model.pkl", f"arima_model_{product_id}.pkl")
+            os.makedirs(os.path.dirname(model_path), exist_ok=True)
+            await asyncio.to_thread(model_fit.save, model_path, remove_data=True)
             
         # Build future forecast docs
         new_future_docs = []
@@ -219,10 +220,10 @@ async def generate_forecast_explanation(db, product_id: int) -> str:
         
         product_name = product.get("name", "Unknown Product")
         
-        # Fetch history and forecasts for Sep-Dec 2017 window
+        # Fetch history and forecasts for Sep-Dec 2026 window
         query = {
             "product_id": product_id,
-            "date": {"$gte": "2017-09-01", "$lte": "2017-12-31"}
+            "date": {"$gte": "2026-09-01", "$lte": "2026-12-31"}
         }
         cursor = db["forecasts"].find(query).sort("date", 1)
         records = []
@@ -241,13 +242,13 @@ async def generate_forecast_explanation(db, product_id: int) -> str:
         future = [r for r in records if r.get("sales") is None]
         
         if not historical:
-            return f"Historical daily demand data for {product_name} in the Sep-Dec 2017 window is currently empty."
+            return f"Historical daily demand data for {product_name} in the Sep-Dec 2026 window is currently empty."
             
         hist_sales = [r["sales"] for r in historical]
         hist_mean = sum(hist_sales) / len(hist_sales)
         
         if not future:
-            return f"Historical daily demand for {product_name} averages {hist_mean:.0f} units in Sep 2017. No forecast is loaded for the Oct-Dec 2017 window."
+            return f"Historical daily demand for {product_name} averages {hist_mean:.0f} units in Sep 2026. No forecast is loaded for the Oct-Dec 2026 window."
 
         forecast_values = [r["forecast"] for r in future]
         forecast_mean = sum(forecast_values) / len(forecast_values)
@@ -269,9 +270,9 @@ async def generate_forecast_explanation(db, product_id: int) -> str:
         ollama_url = "http://localhost:11434/api/generate"
         
         prompt = (
-            f"You are a supply chain AI analyst. Explain the demand forecast for: {product_name} (ID: {product_id}) within the 3-month window (Sep 2017 - Dec 2017).\n"
-            f"- Historical average daily sales (Sep 2017): {hist_mean:.0f} units.\n"
-            f"- Forecasted average daily demand (Oct-Dec 2017): {forecast_mean:.0f} units.\n"
+            f"You are a supply chain AI analyst. Explain the demand forecast for: {product_name} (ID: {product_id}) within the 3-month window (Sep 2026 - Dec 2026).\n"
+            f"- Historical average daily sales (Sep 2026): {hist_mean:.0f} units.\n"
+            f"- Forecasted average daily demand (Oct-Dec 2026): {forecast_mean:.0f} units.\n"
             f"- Peak forecasted daily demand: {peak_forecast:.0f} units on {peak_date}.\n"
             f"- Stockout Risk: {'HIGH' if has_stockout else 'NORMAL'}.\n"
             f"- High Demand Expected: {'YES' if has_high_demand else 'NO'}.\n\n"

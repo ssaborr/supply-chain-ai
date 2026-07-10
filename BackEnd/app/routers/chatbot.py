@@ -40,11 +40,11 @@ async def query_chatbot(request: ChatRequest, db = Depends(get_db), current_admi
         async for o in db["sales_orders"].find({"order_lines.product_sku": {"$in": list(supplier_skus)}}):
             supplier_order_ids.add(int(o["id"]))
 
-    # Special mockup response for PO #41241 (restricted to non-suppliers)
+    # Special mockup response for SO #41241 (restricted to non-suppliers)
     if "41241" in message and not is_supplier:
         return {
             "response": (
-                "PO #41241 is flagged due to a high Anomaly Score (89/100). The Random Forest model detected:\n\n"
+                "SO #41241 is flagged due to a high Anomaly Score (89/100). The Random Forest model detected:\n\n"
                 "• **Real shipment date matches order date** (impossible for international cargo).\n"
                 "• **Order profit margin is negative** (-15%).\n"
                 "• **Client C23312 has 3 other canceled orders** this week."
@@ -112,7 +112,7 @@ async def query_chatbot(request: ChatRequest, db = Depends(get_db), current_admi
                     formatted_list += f"- Order **{order['id']}** on {order['date']} : {lines_str}\n"
 
             # Check if query is about delays/orders
-            is_late_delivery_related = any(w in message_lower for w in ["delay", "late", "retard", "livraison", "delivery", "order", "commande", "po", "shipment"])
+            is_late_delivery_related = any(w in message_lower for w in ["delay", "late", "retard", "livraison", "delivery", "order", "commande", "SO", "shipment"])
             
             # Construct the prompt for Ollama dynamically using the user's instructions
             prompt = (
@@ -226,11 +226,11 @@ async def query_chatbot(request: ChatRequest, db = Depends(get_db), current_admi
 
     
     # Extract order IDs from query (up to 8 digits)
-    order_id_match = re.search(r'\b(?:po|order|purchase\s*order)?\s*#?\s*(\d{1,8})\b', message_lower)
+    order_id_match = re.search(r'\b(?:SO|order|purchase\s*order)?\s*#?\s*(\d{1,8})\b', message_lower)
     order_id = None
     pre_context = {}
     
-    # If no po/order prefix, fallback to standalone number lookup, ignoring timestamps like HH:MM
+    # If no SO/order prefix, fallback to standalone number lookup, ignoring timestamps like HH:MM
     if not order_id_match:
         cleaned_msg = re.sub(r'\b\d+:\d+\b', '', message)
         standalone_num = re.search(r'\b\d{1,8}\b', cleaned_msg)
@@ -347,7 +347,7 @@ async def query_chatbot(request: ChatRequest, db = Depends(get_db), current_admi
             f"If the user asks for client details, other suppliers, or general KPIs, refuse to answer politely.\n\n"
             f"FINAL ANSWER INSTRUCTIONS:\n"
             f"Keep responses conversational and under 3 sentences. Do not mention client names or other suppliers. "
-            f"If the response references a sales order ID, use the markdown link format: [PO #<id>](http://localhost:4200/sales-order?orderId=<id>)."
+            f"If the response references a sales order ID, use the markdown link format: [SO #<id>](http://localhost:4200/sales-order?orderId=<id>)."
         )
     else:
         system_prompt = (
@@ -385,7 +385,7 @@ async def query_chatbot(request: ChatRequest, db = Depends(get_db), current_admi
             "Once you have the database results (either pre-retrieved or after executing DB_QUERY), write a clean, conversational response to the user. "
             "You MUST respond in English at all times. Do not translate your response to French, even if the user queries in French.\n"
             "Do not display the DB_QUERY commands to the user. Keep final responses to 3 sentences max. "
-            "If the response references a specific sales order ID (e.g. PO 367), you MUST output a markdown link formatted exactly as: [PO #<id>](http://localhost:4200/sales-order?orderId=<id>) so the user can easily open it directly from the chat window."
+            "If the response references a specific sales order ID (e.g. SO 367), you MUST output a markdown link formatted exactly as: [SO #<id>](http://localhost:4200/sales-order?orderId=<id>) so the user can easily open it directly from the chat window."
         )
 
     prompt = (
@@ -491,7 +491,7 @@ async def query_chatbot(request: ChatRequest, db = Depends(get_db), current_admi
                 anoms_desc = "\n".join([f"• **{item['anomaly']}**: {item['description']} (Score: {item['score']})" for item in a])
                 return {
                     "response": (
-                        f"Order [PO #{order_id}](http://localhost:4200/sales-order?orderId={order_id}) has the following anomalies flagged in the database:\n\n"
+                        f"Order [SO #{order_id}](http://localhost:4200/sales-order?orderId={order_id}) has the following anomalies flagged in the database:\n\n"
                         f"{anoms_desc}\n\n"
                         f"Details: Profit is **${o.get('order_profit', 0.0):.2f}**, real shipping duration was **{o.get('real_shipment')} days** (promised {o.get('scheduled_shipment')} days)."
                     )
@@ -499,13 +499,13 @@ async def query_chatbot(request: ChatRequest, db = Depends(get_db), current_admi
             else:
                 return {
                     "response": (
-                        f"For [PO #{order_id}](http://localhost:4200/sales-order?orderId={order_id}), no active anomalies are registered in the database. "
+                        f"For [SO #{order_id}](http://localhost:4200/sales-order?orderId={order_id}), no active anomalies are registered in the database. "
                         f"The order profit margin is **${o.get('order_profit', 0.0):.2f}** and shipping delay was **{delay} days**."
                     )
                 }
         else:
             return {
-                "response": f"I queried the database for PO #{order_id}, but no matching order record was found."
+                "response": f"I queried the database for SO #{order_id}, but no matching order record was found."
             }
             
     elif "supplier_info" in pre_context:
@@ -586,14 +586,14 @@ async def query_chatbot(request: ChatRequest, db = Depends(get_db), current_admi
         return {
             "response": (
                 "I am your Supplier Portal Assistant. You can query me about your specific products "
-                "(e.g. 'check stock for SKU 120') or related customer sales orders (e.g. 'details for PO 105')."
+                "(e.g. 'check stock for SKU 120') or related customer sales orders (e.g. 'details for SO 105')."
             )
         }
     
     return {
         "response": (
             "I have access to database connections. You can query me about orders "
-            "(e.g. 'tell me about PO 367' or 'check anomalies for PO 105'), stock levels (e.g. 'check SKU 120'), "
+            "(e.g. 'tell me about SO 367' or 'check anomalies for SO 105'), stock levels (e.g. 'check SKU 120'), "
             "or general stats like KPI values and total product counts."
         )
     }

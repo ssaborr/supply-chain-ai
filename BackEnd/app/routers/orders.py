@@ -87,14 +87,14 @@ async def list_purchases(limit: int = 100, db = Depends(get_db), current_admin: 
 async def explain_overview(db = Depends(get_db), current_admin: dict = Depends(get_current_admin)):
     orders = await list_orders(limit=500, db=db, current_admin=current_admin)
     unusual_count = sum(1 for o in orders if o.get("anomaly_status") == "unusual")
-    delayed = [f"PO{o['id']}" for o in orders if o.get("anomaly_status") == "delay anomaly"]
+    delayed = [f"SO{o['id']}" for o in orders if o.get("anomaly_status") == "delay anomaly"]
     delayed_str = (", ".join(delayed[:5]) + (f" and {len(delayed) - 5} others" if len(delayed) > 5 else "")) if delayed else "None"
     
     prompt = (
         f"You are a supply chain AI analyst. Write a concise 20 sentences executive summary of the current supply chain status.\n"
         f"We have:\n- Total sales orders analyzed: {len(orders)}.\n- KNN unusual transactions flagged: {unusual_count}.\n"
         f"- Critical shipping delays (>3 days) detected: {len(delayed)} orders.\n- Delayed order identifiers: {delayed_str}.\n\n"
-        f"Write a professional summary for the SC Manager. State the number of unusual transactions and list the names/identifiers of the delayed purchases (orders). "
+        f"Write a professional summary for the SC Manager. State the number of unusual transactions and list the names/identifiers of the delayed sales orders. "
         f"Suggest actionable steps like immediate anomalies verification and logistic team coordination. Do NOT use bullet points, markdown list syntax, or greetings."
     )
     
@@ -111,7 +111,7 @@ async def explain_overview(db = Depends(get_db), current_admin: dict = Depends(g
     except Exception:
         pass
         
-    return {"explanation": f"Supply chain overview analysis has completed successfully. Our KNN classifier model has flagged {unusual_count} unusual transaction cases. Critical shipping delays exceeding the 3-day threshold were detected on orders: {delayed_str}. We recommend initiating immediate fraud reviews for flagged clients and coordinating with logistics partners to resolve the delayed purchases."}
+    return {"explanation": f"Supply chain overview analysis has completed successfully. Our KNN classifier model has flagged {unusual_count} unusual transaction cases. Critical shipping delays exceeding the 3-day threshold were detected on orders: {delayed_str}. We recommend initiating immediate fraud reviews for flagged clients and coordinating with logistics partners to resolve the delayed sales orders."}
 
 @router.get("/top-products")
 async def get_top_products(db = Depends(get_db), current_admin: dict = Depends(get_current_admin)):
@@ -167,7 +167,7 @@ async def explain_order(order_id: int, db = Depends(get_db), current_admin: dict
     status = "UNUSUAL (Fraud Risk)" if is_anomaly_resolved else ("DELAY ANOMALY" if delay_delta > 3 else "VALID")
 
     prompt = (
-        f"You are a supply chain risk analyst. Explain why Purchase Order PO #{order_id} is classified as {status}.\n"
+        f"You are a supply chain risk analyst. Explain why Sales Order SO #{order_id} is classified as {status}.\n"
         f"The model's risk feature contributions (SHAP values) are:\n"
         f"- Shipping Delay Contribution: {delay_val} (positive values are risk factors, negative values are mitigating factors)\n"
         f"- Order Volume Impact: {qty_val}\n"
@@ -199,11 +199,11 @@ async def explain_order(order_id: int, db = Depends(get_db), current_admin: dict
         pass
 
     if status == "UNUSUAL (Fraud Risk)":
-        return f"KNN analysis flags PO #{order_id} as suspicious due to a high Profit Margin Deviation (+{margin_val}) and elevated Sales Volume (+{qty_val}), while Client History ({history_val}) acts as the main mitigating factor. Immediate audit recommended."
+        return {"explanation": f"KNN analysis flags SO #{order_id} as suspicious due to a high Profit Margin Deviation (+{margin_val}) and elevated Sales Volume (+{qty_val}), while Client History ({history_val}) acts as the main mitigating factor. Immediate audit recommended."}
     elif status == "DELAY ANOMALY":
-        return f"PO #{order_id} is flagged with a critical shipping delay anomaly (+{delay_val} contribution) due to a carrier delivery delay of {delay_delta} days beyond scheduled shipment, despite standard profit margins."
+        return {"explanation": f"SO #{order_id} is flagged with a critical shipping delay anomaly (+{delay_val} contribution) due to a carrier delivery delay of {delay_delta} days beyond scheduled shipment, despite standard profit margins."}
     else:
-        return f"PO #{order_id} is classified as valid. Key mitigating factors include low shipping delay ({delay_val}) and a stable profit margin ({margin_val}), keeping all attributes well within standard baseline bounds."
+        return {"explanation": f"SO #{order_id} is classified as valid. Key mitigating factors include low shipping delay ({delay_val}) and a stable profit margin ({margin_val}), keeping all attributes well within standard baseline bounds."}
 
 
 @router.post("/{order_id}/verdict")

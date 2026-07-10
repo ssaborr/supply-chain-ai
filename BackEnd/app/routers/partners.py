@@ -26,24 +26,34 @@ async def get_clients_segmentation(db = Depends(get_db), current_admin: dict = D
         if not clients:
             return []
             
+        def adjust_date_to_sep_dec_2026(date_str):
+            if not date_str:
+                return pd.to_datetime("2026-09-01")
+            try:
+                d = pd.to_datetime(date_str)
+                new_month = 9 + (d.month - 1) % 4
+                new_day = min(d.day, 30 if new_month in [9, 11] else 31)
+                return pd.to_datetime(f"2026-{new_month:02d}-{new_day:02d}")
+            except Exception:
+                return pd.to_datetime("2026-09-01")
+
+        client_list = list(clients)
         client_orders = {str(c["id"]): [] for c in clients}
         for o in orders:
             c_id_str = o.get("client_id", "0")
             try:
-                mapped_id = str((int(c_id_str) % 100) + 1)
-            except ValueError:
+                idx = int(c_id_str) % len(client_list)
+                mapped_id = str(client_list[idx]["id"])
+            except (ValueError, IndexError):
                 continue
             if mapped_id in client_orders:
                 lines = o.get("order_lines", [])
                 val = sum(line.get("quantity", 0) * line.get("unitPrice", 0.0) for line in lines)
                 date_str = o.get("order_date")
-                try:
-                    date_val = pd.to_datetime(date_str)
-                except Exception:
-                    date_val = pd.to_datetime("2017-09-01")
+                date_val = adjust_date_to_sep_dec_2026(date_str)
                 client_orders[mapped_id].append({"date": date_val, "value": val})
                 
-        max_date = pd.to_datetime("2017-12-31")
+        max_date = pd.to_datetime("2026-12-31")
         client_data = []
         for c in clients:
             c_id = str(c["id"])

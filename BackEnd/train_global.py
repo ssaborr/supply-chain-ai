@@ -29,7 +29,7 @@ async def train_global():
     
     df = df.groupby("ds").agg({"y": "sum"}).reset_index()
     df = df.sort_values(by="ds").reset_index(drop=True)
-    df = df[df['ds'] < '2017-10-01'].reset_index(drop=True)
+    df = df[df['ds'] < '2026-10-01'].reset_index(drop=True)
     
     print(f"Aggregated {len(df)} daily historical demand points.")
     
@@ -41,10 +41,14 @@ async def train_global():
     model = ARIMA(df_ts["y"], order=(1, 1, 1), seasonal_order=(1, 0, 1, 7))
     model_fit = model.fit()
     
-    # Predict next 90 days + history
+    # Predict up to 2026-12-31
     print("Generating predictions...")
     forecast_hist = model_fit.predict(start=df_ts.index[0], end=df_ts.index[-1])
-    forecast_future = model_fit.forecast(steps=90)
+    
+    max_hist_date = df_ts.index[-1]
+    target_end_date = pd.to_datetime("2026-12-31")
+    steps = max(90, int((target_end_date - max_hist_date).days) + 5)
+    forecast_future = model_fit.forecast(steps=steps)
     
     # Add noise to forecasts to make it proper and capture tendencies
     np.random.seed(0)

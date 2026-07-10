@@ -110,3 +110,25 @@ async def get_discount_revenue(db = Depends(get_db), current_admin: dict = Depen
             "revenue": round(revenue, 2)
         })
     return results
+
+
+from pydantic import BaseModel
+
+class ProductDelaysUpdate(BaseModel):
+    prep_delay: int
+    internal_delay: int
+    transport_delay: int
+
+@router.put("/{sku}/delays")
+async def update_product_delays(sku: int, payload: ProductDelaysUpdate, db = Depends(get_db), current_admin: dict = Depends(get_current_admin)):
+    result = await db["products"].update_one(
+        {"sku": sku},
+        {"$set": {
+            "prep_delay": payload.prep_delay,
+            "internal_delay": payload.internal_delay,
+            "transport_delay": payload.transport_delay
+        }}
+    )
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Product not found")
+    return {"message": "Product delays updated successfully"}

@@ -18,7 +18,7 @@ def _sync_send_email(to_email: str, subject: str, body_text: str) -> dict:
     
     # Try sending via smtplib
     try:
-        # Use SMTP_SSL if port is 465, else standard SMTP
+
         if settings.SMTP_PORT == 465:
             server = smtplib.SMTP_SSL(settings.SMTP_HOST, settings.SMTP_PORT, timeout=10.0)
         else:
@@ -28,8 +28,7 @@ def _sync_send_email(to_email: str, subject: str, body_text: str) -> dict:
                 server.starttls()
             except Exception as tls_err:
                 logger.debug(f"TLS start failed or not supported: {tls_err}")
-                
-        # Authenticate if credentials are provided
+
         if settings.SMTP_USER and settings.SMTP_PASSWORD:
             server.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
             
