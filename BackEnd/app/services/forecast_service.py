@@ -7,6 +7,7 @@ import pandas as pd
 from fastapi import HTTPException
 from statsmodels.tsa.arima.model import ARIMA
 from pymongo import UpdateOne
+from app.services.language_service import ai_language_instruction
 
 logger = logging.getLogger(__name__)
 
@@ -202,7 +203,7 @@ async def retrain_demand_forecast(db, product_id: Optional[int] = None):
     finally:
         lock.release()
 
-async def generate_forecast_explanation(db, product_id: int) -> str:
+async def generate_forecast_explanation(db, product_id: int, language: Optional[str] = None) -> str:
     import math
     import httpx
     
@@ -280,6 +281,7 @@ async def generate_forecast_explanation(db, product_id: int) -> str:
             f"Write a concise 2-3 sentence explanation for the supply chain manager. "
             f"Explain what the forecast indicates about future demand, whether a stockout is expected, and what actionable replenishment steps they should take. "
             f"Be direct and professional. Do NOT use bullet points, markdown list syntax, or introductory greetings (like 'Here is...'). Use the provided numbers."
+            f"{ai_language_instruction(language)}"
         )
         
         try:

@@ -3,14 +3,15 @@ import logging
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from app.core.database import get_db
-from app.services.auth_service import get_current_admin
+from app.services.auth_service import require_admin, require_supplier
+from app.services.language_service import ai_language_instruction
 import httpx
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/supplier", tags=["Supplier"])
 
 @router.get("/list", response_model=List[str])
-async def list_suppliers(db = Depends(get_db), current_admin: dict = Depends(get_current_admin)):
+async def list_suppliers(db = Depends(get_db), current_admin: dict = Depends(require_admin)):
     try:
         # grab supplier names from purchase history
         suppliers = await db["purchases"].distinct("Supplier")
@@ -22,26 +23,21 @@ async def list_suppliers(db = Depends(get_db), current_admin: dict = Depends(get
 @router.get("/dashboard-data")
 async def get_supplier_dashboard_data(
     supplier_name: Optional[str] = None,
+    language: Optional[str] = None,
     db = Depends(get_db),
-    current_admin: dict = Depends(get_current_admin)
+    current_admin: dict = Depends(require_supplier)
 ):
     try:
-        user_role = current_admin.get("role")
         user_supplier_name = current_admin.get("supplier_name")
         
-        # security: supplier users only view their own stats, dude
-        if user_role == "supplier":
-            if user_supplier_name:
-                supplier_name = user_supplier_name
-            else:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="Supplier user has no associated company name"
-                )
-        elif not supplier_name:
-            # admin fallback for testing supplier view
-            all_sups = await db["purchases"].distinct("Supplier")
-            supplier_name = all_sups[0] if all_sups else "Nike Manufacturing EU"
+        # security: supplier users only view their own stats
+        if user_supplier_name:
+            supplier_name = user_supplier_name
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Supplier user has no associated company name"
+            )
 
         purchases = []
         async for p in db["purchases"].find({"Supplier": supplier_name}):
@@ -73,8 +69,11 @@ async def get_supplier_dashboard_data(
             prod_lead_times = []
             for p in purchases:
                 for line in p.get("purchase_lines", []):
-                    if line.get("product_sku") == sku:
-                        prod_lead_times.append(line.get("supplyDelay", 0))
+                    try:
+                        if int(line.get("product_sku")) == int(sku):
+                            prod_lead_times.append(line.get("supplyDelay", 0))
+                    except (TypeError, ValueError):
+                        continue
                         
             L = float(sum(prod_lead_times) / len(prod_lead_times)) if prod_lead_times else avg_lead_time
             if L <= 0:
@@ -135,9 +134,23 @@ async def get_supplier_dashboard_data(
             order["mongo_id"] = str(order.pop("_id"))
             
             lines = order.get("order_lines", [])
-            total_quantity = sum(line.get("quantity", 0) for line in lines)
-            total_sales = sum(line.get("quantity", 0) * line.get("unitPrice", 0.0) for line in lines) or (order.get("order_profit", 0.0) / 0.15 if order.get("order_profit", 0.0) != 0 else 100.0)
-            profit_margin = order.get("order_profit", 0.0) / total_sales
+            supplier_lines = []
+            for line in lines:
+                try:
+                    if int(line.get("product_sku")) in supplier_skus:
+                        supplier_lines.append(line)
+                except (TypeError, ValueError):
+                    continue
+
+            if not supplier_lines:
+                continue
+
+            total_quantity = sum(line.get("quantity", 0) for line in supplier_lines)
+            total_sales = sum(
+                line.get("quantity", 0) * line.get("unitPrice", 0.0)
+                for line in supplier_lines
+            )
+            profit_margin = order.get("order_profit", 0.0) / total_sales if total_sales else 0.0
             
             delay_delta = order.get("real_shipment", 0) - order.get("scheduled_shipment", 0)
             anomaly_status = "unusual" if order.get("status") == "SUSPECTED_FRAUD" else ("delay anomaly" if delay_delta > 3 else "valid")
@@ -147,7 +160,8 @@ async def get_supplier_dashboard_data(
                 "delay_delta": delay_delta,
                 "total_quantity": total_quantity,
                 "total_sales": total_sales,
-                "profit_margin": profit_margin
+                "profit_margin": profit_margin,
+                "order_lines": supplier_lines
             })
             sales_orders.append(order)
 
@@ -173,10 +187,9 @@ async def get_supplier_dashboard_data(
         total_sales_volume = 0
         for o in sales_orders:
             for line in o.get("order_lines", []):
-                if int(line.get("product_sku")) in supplier_skus:
-                    qty = line.get("quantity", 0)
-                    total_sales_volume += qty
-                    total_sales_revenue += qty * line.get("unitPrice", 0.0)
+                qty = line.get("quantity", 0)
+                total_sales_volume += qty
+                total_sales_revenue += qty * line.get("unitPrice", 0.0)
 
         low_stock_items = [{k: v for k, v in item.items() if k != "_id"} for item in low_stock_items]
 
@@ -190,6 +203,7 @@ async def get_supplier_dashboard_data(
             f"- Downstream customer sales orders related to their products: {len(sales_orders)} orders.\n\n"
             f"Write a concise professional summary (3-4 sentences) directly addressing the supplier. Tell them how their delay affects downstream deliveries, and advise them on what low-stock items to restock immediately. "
             f"Keep it strictly professional. Do not use bullet points or markdown list syntax."
+            f"{ai_language_instruction(language)}"
         )
 
         ai_explanation = ""
@@ -219,10 +233,13 @@ async def get_supplier_dashboard_data(
             "kpis": {
                 "avg_lead_time": round(avg_lead_time, 1),
                 "otif_rate": round(otif_rate, 1),
+                "on_time_purchase_lines": on_time_count,
+                "total_purchase_lines": total_purchase_lines,
                 "total_volume_supplied": total_volume_supplied,
                 "total_supply_cost": round(total_supply_cost, 2),
                 "total_sales_revenue": round(total_sales_revenue, 2),
                 "total_sales_volume": total_sales_volume,
+                "supplier_products_count": len(products),
                 "sales_orders_count": len(sales_orders),
                 "low_stock_count": len(low_stock_items)
             },
@@ -231,6 +248,8 @@ async def get_supplier_dashboard_data(
             "low_stock_items": [{k: v for k, v in p.items() if k != "_id"} for p in low_stock_items],
             "ai_explanation": ai_explanation
         }
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error compiling supplier dashboard data: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))

@@ -2,7 +2,8 @@ from fastapi import APIRouter, Depends, HTTPException, status, File, UploadFile,
 from bson import ObjectId
 from typing import List, Optional
 from app.core.database import get_db
-from app.services.auth_service import get_current_admin
+from app.services.auth_service import require_admin_role
+from app.services.language_service import ai_language_instruction
 import os
 import io
 import logging
@@ -34,7 +35,7 @@ def load_lgb_model():
     return LGB_MODEL_DATA
 
 @router.get("")
-async def list_orders(limit: int = 500, db = Depends(get_db), current_admin: dict = Depends(get_current_admin)):
+async def list_orders(limit: int = 500, db = Depends(get_db), current_admin: dict = Depends(require_admin_role)):
     products_map = {int(p["sku"]): {"category": p.get("category", "Unknown"), "discount": p.get("discount", 0.0)} async for p in db["products"].find()}
     model_data = load_lgb_model()
     orders = []
@@ -76,7 +77,7 @@ async def list_orders(limit: int = 500, db = Depends(get_db), current_admin: dic
     return orders
 
 @router.get("/purchases")
-async def list_purchases(limit: int = 100, db = Depends(get_db), current_admin: dict = Depends(get_current_admin)):
+async def list_purchases(limit: int = 100, db = Depends(get_db), current_admin: dict = Depends(require_admin_role)):
     purchases = []
     async for doc in db["purchases"].find().limit(limit):
         doc["mongo_id"] = str(doc.pop("_id"))
@@ -84,7 +85,7 @@ async def list_purchases(limit: int = 100, db = Depends(get_db), current_admin: 
     return purchases
 
 @router.get("/overview/explain")
-async def explain_overview(db = Depends(get_db), current_admin: dict = Depends(get_current_admin)):
+async def explain_overview(language: Optional[str] = None, db = Depends(get_db), current_admin: dict = Depends(require_admin_role)):
     orders = await list_orders(limit=100000, db=db, current_admin=current_admin)
     unusual_count = sum(1 for o in orders if o.get("anomaly_status") == "unusual")
     delayed = [f"SO{o['id']}" for o in orders if o.get("anomaly_status") == "delay anomaly"]
@@ -96,6 +97,7 @@ async def explain_overview(db = Depends(get_db), current_admin: dict = Depends(g
         f"- Critical shipping delays (>3 days) detected: {len(delayed)} orders.\n- Delayed order identifiers: {delayed_str}.\n\n"
         f"Write a professional summary for the SC Manager. State the number of unusual transactions and list the names/identifiers of the delayed sales orders. "
         f"Suggest actionable steps like immediate anomalies verification and logistic team coordination. Do NOT use bullet points, markdown list syntax, or greetings."
+        f"{ai_language_instruction(language)}"
     )
     
     try:
@@ -122,7 +124,7 @@ async def explain_overview(db = Depends(get_db), current_admin: dict = Depends(g
     raise HTTPException(status_code=502, detail="Ollama explanation generation failed")
 
 @router.get("/top-products")
-async def get_top_products(db = Depends(get_db), current_admin: dict = Depends(get_current_admin)):
+async def get_top_products(db = Depends(get_db), current_admin: dict = Depends(require_admin_role)):
     products = {int(p["sku"]): {"name": p.get("name", f"SKU {p['sku']}"), "price": p.get("price", 0.0)} async for p in db["products"].find()}
     from collections import Counter
     qty_counter = Counter()
@@ -148,7 +150,7 @@ async def get_top_products(db = Depends(get_db), current_admin: dict = Depends(g
 
 
 @router.get("/{order_id}/explain")
-async def explain_order(order_id: int, db = Depends(get_db), current_admin: dict = Depends(get_current_admin)):
+async def explain_order(order_id: int, language: Optional[str] = None, db = Depends(get_db), current_admin: dict = Depends(require_admin_role)):
     doc = await db["sales_orders"].find_one({"id": order_id})
     if not doc:
         raise HTTPException(status_code=404, detail="Order not found.")
@@ -188,6 +190,7 @@ async def explain_order(order_id: int, db = Depends(get_db), current_admin: dict
         f"- Shipping Delay: {delay_delta} days\n\n"
         f"Provide a concise, professional explanation (2-3 sentences max) explaining the key contributing factors to this verdict. "
         f"Specify which features act as risk factors and which act as mitigating factors. Use model 'qwen2.5:7b'."
+        f"{ai_language_instruction(language)}"
     )
 
     try:
@@ -215,7 +218,7 @@ async def explain_order(order_id: int, db = Depends(get_db), current_admin: dict
 
 
 @router.post("/{order_id}/verdict")
-async def update_order_verdict(order_id: int, payload: dict, db = Depends(get_db), current_admin: dict = Depends(get_current_admin)):
+async def update_order_verdict(order_id: int, payload: dict, db = Depends(get_db), current_admin: dict = Depends(require_admin_role)):
     verdict = payload.get("verdict")
     description = payload.get("description")
     
@@ -235,7 +238,7 @@ async def update_order_verdict(order_id: int, payload: dict, db = Depends(get_db
     return {"message": "Order verdict updated successfully."}
 
 @router.get("/discount-analysis")
-async def get_discount_analysis(db = Depends(get_db), current_admin: dict = Depends(get_current_admin)):
+async def get_discount_analysis(db = Depends(get_db), current_admin: dict = Depends(require_admin_role)):
     # get discount distributions across products
     products_map = {int(p["sku"]): p.get("discount", 0.0) async for p in db["products"].find()}
     
@@ -284,7 +287,7 @@ async def get_discount_analysis(db = Depends(get_db), current_admin: dict = Depe
 @router.post("/validate")
 async def validate_orders_endpoint(
     file: UploadFile = File(...),
-    current_admin: dict = Depends(get_current_admin)
+    current_admin: dict = Depends(require_admin_role)
 ):
     filename = file.filename
     ext = os.path.splitext(filename)[1].lower()
@@ -368,7 +371,7 @@ async def import_orders_endpoint(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     db = Depends(get_db),
-    current_admin: dict = Depends(get_current_admin)
+    current_admin: dict = Depends(require_admin_role)
 ):
     filename = file.filename
     ext = os.path.splitext(filename)[1].lower()

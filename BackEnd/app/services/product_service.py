@@ -2,15 +2,47 @@ import httpx
 import logging
 from fastapi import HTTPException
 from app.core.database import get_db
+from typing import Optional
+from app.services.language_service import ai_language_instruction
 
 logger = logging.getLogger(__name__)
 
-async def generate_cluster_summary(db) -> str:
+def _build_cluster_summary_prompt(hv: dict, vd: dict, lp: dict, supplier_name: Optional[str] = None, language: Optional[str] = None) -> str:
+    total_count = hv["count"] + vd["count"] + lp["count"]
+    scope_intro = (
+        f"for supplier '{supplier_name}'"
+        if supplier_name
+        else "for the full product catalog"
+    )
+    catalog_label = "Supplier-filtered catalog size" if supplier_name else "Total catalog size"
+    supplier_instruction = (
+        f"Start by naming '{supplier_name}'. Only discuss products supplied by this supplier, "
+        "and do not describe the result as a global or company-wide catalog insight. "
+        if supplier_name
+        else ""
+    )
+
+    return (
+        f"You are a supply chain inventory analyst. Summarize our K-Means product clustering tier results {scope_intro}:\n"
+        f"- {catalog_label}: {total_count} products.\n"
+        f"- High Value tier: {hv['count']} premium items (avg price ${hv['avg_price']:.2f} each).\n"
+        f"- Volume Drivers tier: {vd['count']} items (avg monthly volume {vd['avg_volume']:.0f} units).\n"
+        f"- Low Performers tier: {lp['count']} items (avg volume {lp['avg_volume']:.0f} units).\n\n"
+        f"{supplier_instruction}"
+        f"Write a concise 2 sentences explanation. Give LLM advice on inventory optimization or SKU rationalization based on these tiers. "
+        f"Do not use bullet points, greetings, or markdown list syntax."
+        f"{ai_language_instruction(language)}"
+    )
+
+
+async def generate_cluster_summary(db, product_query: Optional[dict] = None, supplier_name: Optional[str] = None, language: Optional[str] = None) -> str:
     try:
+        product_query = product_query or {}
+
         # helper to aggregate stats (count, price, stock) for a specific product cluster, dude
         async def get_cluster_stats(cluster_name: str):
             pipeline = [
-                {"$match": {"cluster": cluster_name}},
+                {"$match": {**product_query, "cluster": cluster_name}},
                 {"$group": {
                     "_id": None,
                     "avg_price": {"$avg": "$price"},
@@ -40,15 +72,7 @@ async def generate_cluster_summary(db) -> str:
         if total_count == 0:
             raise HTTPException(status_code=404, detail="Product clustering data unavailable")
 
-        prompt = (
-            f"You are a supply chain inventory analyst. Summarize our K-Means product clustering tier results:\n"
-            f"- Total Catalog size: {total_count} products.\n"
-            f"- High Value tier: {hv['count']} premium items (avg price ${hv['avg_price']:.2f} each).\n"
-            f"- Volume Drivers tier: {vd['count']} items (avg monthly volume {vd['avg_volume']:.0f} units).\n"
-            f"- Low Performers tier: {lp['count']} items (avg volume {lp['avg_volume']:.0f} units).\n\n"
-            f"Write a concise 2 sentences explanation. Give LLM advice on inventory optimization or SKU rationalization based on these tiers. "
-            f"Do not use bullet points, greetings, or markdown list syntax."
-        )
+        prompt = _build_cluster_summary_prompt(hv, vd, lp, supplier_name, language)
         try:
             async with httpx.AsyncClient(timeout=60.0) as client:
                 resp = await client.get("http://localhost:11434/api/tags")

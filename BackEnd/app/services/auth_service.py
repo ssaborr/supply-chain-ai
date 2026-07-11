@@ -43,3 +43,24 @@ async def get_current_admin(
     # cast ObjectID to string for token encoding
     admin["id"] = str(admin["_id"])
     return admin
+
+
+def _require_role(current_admin: dict, allowed_roles: set[str]) -> dict:
+    if current_admin.get("role") not in allowed_roles:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have permission to access this resource."
+        )
+    return current_admin
+
+
+async def require_admin(current_admin: dict = Depends(get_current_admin)) -> dict:
+    return _require_role(current_admin, {"admin"})
+
+
+async def require_admin_role(current_admin: dict = Depends(get_current_admin)) -> dict:
+    return _require_role(current_admin, {"admin", "sub_admin", "manager"})
+
+
+async def require_supplier(current_admin: dict = Depends(get_current_admin)) -> dict:
+    return _require_role(current_admin, {"supplier"})

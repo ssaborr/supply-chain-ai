@@ -3,7 +3,8 @@ import logging
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from app.core.database import get_db
-from app.services.auth_service import get_current_admin
+from app.services.auth_service import require_admin_role
+from app.services.language_service import ai_language_instruction
 import pandas as pd
 import numpy as np
 from sklearn.cluster import KMeans
@@ -13,7 +14,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/partners", tags=["Partners"])
 
 @router.get("/clients/segmentation")
-async def get_clients_segmentation(db = Depends(get_db), current_admin: dict = Depends(get_current_admin)):
+async def get_clients_segmentation(db = Depends(get_db), current_admin: dict = Depends(require_admin_role)):
     try:
         clients = []
         async for c in db["client"].find():
@@ -108,7 +109,7 @@ async def get_clients_segmentation(db = Depends(get_db), current_admin: dict = D
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/suppliers/segmentation")
-async def get_suppliers_segmentation(db = Depends(get_db), current_admin: dict = Depends(get_current_admin)):
+async def get_suppliers_segmentation(db = Depends(get_db), current_admin: dict = Depends(require_admin_role)):
     try:
         purchases = []
         async for p in db["purchases"].find():
@@ -176,7 +177,7 @@ async def get_suppliers_segmentation(db = Depends(get_db), current_admin: dict =
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/clients/explain")
-async def explain_clients_segmentation(db = Depends(get_db), current_admin: dict = Depends(get_current_admin)):
+async def explain_clients_segmentation(language: Optional[str] = None, db = Depends(get_db), current_admin: dict = Depends(require_admin_role)):
     import httpx
     clients = await get_clients_segmentation(db, current_admin)
     if not clients:
@@ -193,6 +194,7 @@ async def explain_clients_segmentation(db = Depends(get_db), current_admin: dict
         f"- At Risk of churn: {at_risk_count} clients.\n\n"
         f"Write a concise 2 sentences explanation. Give LLM advice on what retention campaign or actions to initiate for the At Risk segment to rebuild loyalty. "
         f"Do not use bullet points, greetings, or markdown list syntax. Keep it strictly professional."
+        f"{ai_language_instruction(language)}"
     )
     
     explanation = ""

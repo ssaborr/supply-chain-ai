@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from typing import List, Optional
 from app.core.database import get_db
-from app.services.auth_service import get_current_admin
+from app.services.auth_service import get_current_admin, require_admin_role
 from app.models.product import ProductOut
 from app.models.kpi import DemandForecastOut
 from app.services.forecast_service import retrain_demand_forecast, generate_forecast_explanation
@@ -11,43 +11,68 @@ router = APIRouter(prefix="/products", tags=["Products"])
 
 RETRAINED_PRODUCTS = set()
 
+async def _get_product_query_for_user(db, current_admin: dict) -> dict:
+    if current_admin.get("role") != "supplier":
+        return {}
+
+    supplier_name = current_admin.get("supplier_name")
+    if not supplier_name:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Supplier user has no associated company name"
+        )
+
+    supplier_skus = set()
+    async for purchase in db["purchases"].find({"Supplier": supplier_name}):
+        for line in purchase.get("purchase_lines", []):
+            sku = line.get("product_sku")
+            if sku is not None:
+                supplier_skus.add(int(sku))
+
+    return {"sku": {"$in": list(supplier_skus)}}
+
+
+def _serialize_product(doc: dict) -> Optional[dict]:
+    try:
+        sku = doc.get("sku")
+        if sku is None:
+            return None
+        sku_id = int(sku)
+        doc_id_str = str(doc.pop("_id"))
+        return {**doc, "id": sku_id, "id_str": doc_id_str}
+    except Exception:
+        return None
+
+
 @router.get("/clusters/summary")
-async def get_clusters_summary(db = Depends(get_db), current_admin: dict = Depends(get_current_admin)):
-    return {"summary": await generate_cluster_summary(db)}
+async def get_clusters_summary(language: Optional[str] = None, db = Depends(get_db), current_admin: dict = Depends(get_current_admin)):
+    query = await _get_product_query_for_user(db, current_admin)
+    supplier_name = current_admin.get("supplier_name") if current_admin.get("role") == "supplier" else None
+    return {"summary": await generate_cluster_summary(db, query, supplier_name, language)}
 
 
 @router.get("", response_model=List[ProductOut])
 async def list_products(db = Depends(get_db), current_admin: dict = Depends(get_current_admin)):
     products = []
-    async for doc in db["products"].find().sort("name", 1):
-        try:
-            sku = doc.get("sku")
-            if sku is None:
-                continue
-            sku_id = int(sku)
-            doc_id_str = str(doc.pop("_id"))
-            products.append({**doc, "id": sku_id, "id_str": doc_id_str})
-        except Exception:
-            continue
+    query = await _get_product_query_for_user(db, current_admin)
+    async for doc in db["products"].find(query).sort("name", 1):
+        product = _serialize_product(doc)
+        if product:
+            products.append(product)
     return products
 
 @router.get("/clusters", response_model=List[ProductOut])
 async def list_product_clusters(db = Depends(get_db), current_admin: dict = Depends(get_current_admin)):
     products = []
-    async for doc in db["products"].find().sort("name", 1):
-        try:
-            sku = doc.get("sku")
-            if sku is None:
-                continue
-            sku_id = int(sku)
-            doc_id_str = str(doc.pop("_id"))
-            products.append({**doc, "id": sku_id, "id_str": doc_id_str})
-        except Exception:
-            continue
+    query = await _get_product_query_for_user(db, current_admin)
+    async for doc in db["products"].find(query).sort("name", 1):
+        product = _serialize_product(doc)
+        if product:
+            products.append(product)
     return products
 
 @router.get("/forecasts/aggregate", response_model=List[DemandForecastOut])
-async def get_aggregated_forecasts(db = Depends(get_db), current_admin: dict = Depends(get_current_admin)):
+async def get_aggregated_forecasts(db = Depends(get_db), current_admin: dict = Depends(require_admin_role)):
     return [{**doc, "id": str(doc.pop("_id"))} async for doc in db["forecasts"].find({"product_id": 0}).sort("date", 1)]
 
 @router.get("/forecasts", response_model=List[DemandForecastOut])
@@ -56,7 +81,7 @@ async def list_forecasts(
     product_id: Optional[int] = None,
     limit: int = 2000,
     db = Depends(get_db),
-    current_admin: dict = Depends(get_current_admin)
+    current_admin: dict = Depends(require_admin_role)
 ):
     query = {"product_id": product_id} if product_id is not None else {}
     if product_id is not None and product_id != 0:
@@ -70,16 +95,16 @@ async def list_forecasts(
     return [{**doc, "id": str(doc.pop("_id"))} async for doc in db["forecasts"].find(query).sort("date", 1).limit(limit)]
 
 @router.get("/forecasts/explain")
-async def explain_forecast(product_id: int, db = Depends(get_db), current_admin: dict = Depends(get_current_admin)):
-    return {"explanation": await generate_forecast_explanation(db, product_id)}
+async def explain_forecast(product_id: int, language: Optional[str] = None, db = Depends(get_db), current_admin: dict = Depends(require_admin_role)):
+    return {"explanation": await generate_forecast_explanation(db, product_id, language)}
 
 @router.post("/forecasts/retrain", status_code=status.HTTP_202_ACCEPTED)
-async def trigger_retrain(background_tasks: BackgroundTasks, product_id: Optional[int] = None, db = Depends(get_db), current_admin: dict = Depends(get_current_admin)):
+async def trigger_retrain(background_tasks: BackgroundTasks, product_id: Optional[int] = None, db = Depends(get_db), current_admin: dict = Depends(require_admin_role)):
     background_tasks.add_task(retrain_demand_forecast, db, product_id)
     return {"message": f"Prophet model retraining triggered in background for product_id={product_id}."}
 
 @router.get("/discount-revenue")
-async def get_discount_revenue(db = Depends(get_db), current_admin: dict = Depends(get_current_admin)):
+async def get_discount_revenue(db = Depends(get_db), current_admin: dict = Depends(require_admin_role)):
     pipeline = [
         {"$unwind": "$order_lines"},
         {"$group": {
@@ -117,7 +142,7 @@ class ProductDelaysUpdate(BaseModel):
     transport_delay: int
 
 @router.put("/{sku}/delays")
-async def update_product_delays(sku: int, payload: ProductDelaysUpdate, db = Depends(get_db), current_admin: dict = Depends(get_current_admin)):
+async def update_product_delays(sku: int, payload: ProductDelaysUpdate, db = Depends(get_db), current_admin: dict = Depends(require_admin_role)):
     result = await db["products"].update_one(
         {"sku": sku},
         {"$set": {
@@ -134,7 +159,7 @@ async def update_product_delays(sku: int, payload: ProductDelaysUpdate, db = Dep
 from app.services.delay_service import train_delay_model
 
 @router.post("/train-delays")
-async def trigger_train_delays(db = Depends(get_db), current_admin: dict = Depends(get_current_admin)):
+async def trigger_train_delays(db = Depends(get_db), current_admin: dict = Depends(require_admin_role)):
     res = await train_delay_model(db)
     if res.get("status") == "error":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=res.get("message"))

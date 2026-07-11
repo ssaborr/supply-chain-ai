@@ -6,7 +6,8 @@ from bson import ObjectId
 from typing import List
 import httpx
 from app.core.database import get_db
-from app.services.auth_service import get_current_admin
+from app.services.auth_service import require_admin_role
+from app.services.language_service import ai_language_instruction
 from app.models.kpi import AnomalyRecordOut, RFMRecordOut
     
 logger = logging.getLogger("kpis")
@@ -174,15 +175,15 @@ def compute_dashboard_metrics(orders, products, previous_orders=None, *, zero_ba
 
 
 @router.get("/anomalies", response_model=List[AnomalyRecordOut])
-async def list_anomalies(limit: int = 100, db = Depends(get_db), current_admin: dict = Depends(get_current_admin)):
+async def list_anomalies(limit: int = 100, db = Depends(get_db), current_admin: dict = Depends(require_admin_role)):
     return [{**doc, "id": str(doc.pop("_id"))} async for doc in db["anomalies"].find().limit(limit)]
 
 @router.get("/rfm", response_model=List[RFMRecordOut])
-async def list_rfm_records(limit: int = 100, db = Depends(get_db), current_admin: dict = Depends(get_current_admin)):
+async def list_rfm_records(limit: int = 100, db = Depends(get_db), current_admin: dict = Depends(require_admin_role)):
     return [{**doc, "id": str(doc.pop("_id"))} async for doc in db["rfm_records"].find().limit(limit)]
 
 @router.get("/executive-summary")
-async def get_executive_summary(db = Depends(get_db), current_admin: dict = Depends(get_current_admin)):
+async def get_executive_summary(language: str = "en", db = Depends(get_db), current_admin: dict = Depends(require_admin_role)):
     from datetime import datetime
 
     def parse_date(date_str):
@@ -241,6 +242,7 @@ async def get_executive_summary(db = Depends(get_db), current_admin: dict = Depe
         f"- Total Active Customers: {total_customers}\n\n"
         f"Write a concise 3 sentences analyst report explaining in general how the business is going. Explain the operational health, comment on stock and delivery performance, and suggest areas of focus. "
         f"Do not use bullet points, greetings, or markdown list syntax. Be analytical and professional."
+        f"{ai_language_instruction(language)}"
     )
     
     summary_text = ""

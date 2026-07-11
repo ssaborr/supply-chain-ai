@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from app.core.database import get_db
 from app.core.security import get_password_hash
 from app.models.user import AdminCreate, AdminOut
-from app.services.auth_service import get_current_admin
+from app.services.auth_service import require_admin
 from app.services.face_service import get_face_service
 
 logger = logging.getLogger(__name__)
@@ -18,7 +18,7 @@ class FaceEnrollRequest(BaseModel):
     image: str  # Base64 encoded image string
 
 @router.get("/", response_model=List[AdminOut])
-async def list_admins(db = Depends(get_db), current_admin: dict = Depends(get_current_admin)):
+async def list_admins(db = Depends(get_db), current_admin: dict = Depends(require_admin)):
     admins = []
     async for admin in db["admin"].find():
         admin_id = str(admin.pop("_id"))
@@ -35,14 +35,8 @@ async def list_admins(db = Depends(get_db), current_admin: dict = Depends(get_cu
 async def create_admin(
     admin_in: AdminCreate,
     db = Depends(get_db),
-    current_admin: dict = Depends(get_current_admin)
+    current_admin: dict = Depends(require_admin)
 ):
-    if current_admin.get("role") != "admin":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only administrators can manage users and permissions."
-        )
-
     # verify email is unique before registering account
     email_clean = admin_in.email.lower()
     existing = await db["admin"].find_one({"email": email_clean})
@@ -72,14 +66,8 @@ async def create_admin(
 async def delete_admin(
     admin_id: str,
     db = Depends(get_db),
-    current_admin: dict = Depends(get_current_admin)
+    current_admin: dict = Depends(require_admin)
 ):
-    if current_admin.get("role") != "admin":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only administrators can manage users and permissions."
-        )
-
     if admin_id == current_admin.get("id"):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -106,15 +94,8 @@ async def enroll_user_face(
     admin_id: str,
     payload: FaceEnrollRequest,
     db = Depends(get_db),
-    current_admin: dict = Depends(get_current_admin)
+    current_admin: dict = Depends(require_admin)
 ):
-    # authenticate request to make sure admin or self is modifying profile
-    if current_admin.get("role") != "admin" and current_admin.get("id") != admin_id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="You do not have permission to enroll face for this user."
-        )
-
     try:
         oid = ObjectId(admin_id)
     except Exception:
@@ -173,14 +154,8 @@ async def enroll_user_face(
 async def delete_user_face(
     admin_id: str,
     db = Depends(get_db),
-    current_admin: dict = Depends(get_current_admin)
+    current_admin: dict = Depends(require_admin)
 ):
-    if current_admin.get("role") != "admin" and current_admin.get("id") != admin_id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="You do not have permission to modify face enrollments for this user."
-        )
-
     try:
         oid = ObjectId(admin_id)
     except Exception:
