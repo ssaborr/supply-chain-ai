@@ -149,7 +149,7 @@ def seed_database():
 
         count_orders = 0
         for order_id, group in order_groups:
-            if count_orders >= 500: # Limit to 500 orders
+            if count_orders >= 510: # Limit to 500 orders
                 break
             try:
                 first_row = group.iloc[0]
