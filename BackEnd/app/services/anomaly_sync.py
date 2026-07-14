@@ -58,6 +58,7 @@ async def sync_anomalies_to_db(db):
                         [[float(delay_delta), float(total_quantity), float(total_sales), float(profit_margin), float(discount_ratio)]],
                         columns=model_data["features"]
                     )
+                    # already fited predict 
                     is_lgb_fraud = int(model_data["model"].predict(features)[0])
                 except Exception:
                     pass

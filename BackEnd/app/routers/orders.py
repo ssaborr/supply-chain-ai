@@ -76,6 +76,18 @@ async def list_orders(limit: int = 500, db = Depends(get_db), current_admin: dic
         orders.append(doc)
     return orders
 
+@router.get("/download-template")
+async def download_template(current_admin: dict = Depends(require_admin_role)):
+    from fastapi.responses import FileResponse
+    template_path = r"c:\Users\Sabor\Desktop\project\test_orders_new.csv"
+    if not os.path.exists(template_path):
+        raise HTTPException(status_code=404, detail="Template file not found.")
+    return FileResponse(
+        path=template_path,
+        filename="test_orders_new.csv",
+        media_type="text/csv"
+    )
+
 @router.get("/purchases")
 async def list_purchases(limit: int = 100, db = Depends(get_db), current_admin: dict = Depends(require_admin_role)):
     purchases = []
@@ -164,12 +176,17 @@ async def explain_order(order_id: int, language: Optional[str] = None, db = Depe
     # generate simulated SHAP feature attribution values, dude
     delay_val = int(delay_delta * 12) if delay_delta > 0 else -10
     qty_val = int(min(45, total_quantity * 0.4)) if total_quantity > 80 else -15
-    history_val = -20 if doc.get("client_id", 0) % 3 == 0 else 25
+
+    try:
+        client_id_val = int(doc.get("client_id", 0))
+    except (ValueError, TypeError):
+        client_id_val = 0
+    history_val = -20 if client_id_val % 3 == 0 else 25
     margin_val = -22 if profit_margin > 0.1 else 30
 
     user_verdict = doc.get("user_verdict")
     base_status = "unusual" if (doc.get("status") == "SUSPECTED_FRAUD" or (doc.get("delay_delta", 0) > 3 and doc.get("anomaly_status") != "valid")) else doc.get("anomaly_status", "valid")
-    
+
     is_anomaly_resolved = (
         (base_status in ["unusual", "delay anomaly"] and (user_verdict == "True" or user_verdict == "TP" or not user_verdict)) or
         (base_status == "valid" and (user_verdict == "False" or user_verdict == "FN"))

@@ -1,0 +1,7 @@
+- [x] Create train_knn.ipynb for KNN anomaly/fraud detection
+- [x] Create train_lgbm.ipynb for LightGBM anomaly/fraud detection
+- [x] Create train_arima_global.ipynb for global SARIMA demand forecasting
+- [x] Create train_delay_predictor.ipynb for logistics delay prediction linear regression
+- [x] Add download-template GET endpoint to BackEnd orders.py
+- [x] Add downloadTemplate method to FrontEnd sales-order.ts
+- [x] Integrate template download button inside the import modal in sales-order.html and style in sales-order.css

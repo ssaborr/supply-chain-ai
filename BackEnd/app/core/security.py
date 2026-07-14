@@ -4,8 +4,8 @@ from jose import jwt
 from passlib.context import CryptContext
 from app.core.config import settings
 
-# using pbkdf2_sha256 here so we don't hit bcrypt's annoying 72-byte limit
-# keeps password hashing portable and avoids native compile nightmares for junior devs
+# using pbkdf2_sha256 here for 72-byte limit
+
 pwd_context = CryptContext(
     schemes=["pbkdf2_sha256"],
     deprecated="auto"

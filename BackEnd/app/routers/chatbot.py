@@ -14,7 +14,7 @@ class ChatRequest(BaseModel):
     message: str
 
 @router.post("/query")
-async def query_chatbot(request: ChatRequest, db = Depends(get_db), current_admin: dict = Depends(get_current_admin)):
+async def query_chatbot(request: ChatRequest, language: str = "en", db = Depends(get_db), current_admin: dict = Depends(get_current_admin)):
     message = request.message.strip()
     message_lower = message.lower()
     
@@ -25,6 +25,10 @@ async def query_chatbot(request: ChatRequest, db = Depends(get_db), current_admi
 
     if is_supplier:
         if not supplier_name:
+            if language == "fr":
+                return {
+                    "response": "Accès refusé : Votre compte utilisateur n'est associé à aucun nom de fournisseur. Veuillez contacter l'administrateur."
+                }
             return {
                 "response": "Access Denied: Your user account is not associated with any supplier name. Please contact the administrator."
             }
@@ -42,6 +46,15 @@ async def query_chatbot(request: ChatRequest, db = Depends(get_db), current_admi
 
     # hacky easter-egg: mockup info for SO #41241. Don't show to suppliers though!
     if "41241" in message and not is_supplier:
+        if language == "fr":
+            return {
+                "response": (
+                    "SO #41241 est signalé en raison d'un score d'anomalie élevé (89/100). Le modèle Random Forest a détecté :\n\n"
+                    "• **La date d'expédition réelle correspond à la date de commande** (impossible pour le fret international).\n"
+                    "• **La marge bénéficiaire de la commande est négative** (-15%).\n"
+                    "• **Le client C23312 a 3 autres commandes annulées** cette semaine."
+                )
+            }
         return {
             "response": (
                 "SO #41241 is flagged due to a high Anomaly Score (89/100). The Random Forest model detected:\n\n"
@@ -108,15 +121,20 @@ async def query_chatbot(request: ChatRequest, db = Depends(get_db), current_admi
             formatted_list = ""
             if late_orders:
                 for order in late_orders:
-                    lines_str = ", ".join([f"SKU #{l['sku']} ({l['delay']} days delayed)" for l in order["lines"]])
-                    formatted_list += f"- Order **{order['id']}** on {order['date']} : {lines_str}\n"
+                    if language == "fr":
+                        lines_str = ", ".join([f"SKU #{l['sku']} ({l['delay']} jours de retard)" for l in order["lines"]])
+                        formatted_list += f"- Commande **{order['id']}** le {order['date']} : {lines_str}\n"
+                    else:
+                        lines_str = ", ".join([f"SKU #{l['sku']} ({l['delay']} days delayed)" for l in order["lines"]])
+                        formatted_list += f"- Order **{order['id']}** on {order['date']} : {lines_str}\n"
 
             # routing logic: decide if we are talking about delivery delays
             is_late_delivery_related = any(w in message_lower for w in ["delay", "late", "retard", "livraison", "delivery", "order", "commande", "SO", "shipment"])
             
             # build the LLM prompt with local RAG context
+            lang_name = "French" if language == "fr" else "English"
             prompt = (
-                f"Write a professional business email or reminder in English to the supplier '{matched_supplier}'.\n"
+                f"Write a professional business email or reminder in {lang_name} to the supplier '{matched_supplier}'.\n"
                 f"The user's query is: '{message}'\n\n"
                 f"Sign the email with the following details (do NOT leave placeholder brackets like [Your Name] in the signature):\n"
                 f"- Name: Supply Chain AI Admin\n"
@@ -124,13 +142,20 @@ async def query_chatbot(request: ChatRequest, db = Depends(get_db), current_admi
                 f"- Contact: 0606060606\n\n"
             )
             if formatted_list and (is_late_delivery_related or len(message.split()) < 5):
-                prompt += (
-                    f"Here is the database context of delayed orders for this supplier:\n"
-                    f"{formatted_list}\n"
-                    f"If the user's query asks about delays/orders, please list these orders and exact delays. Otherwise, focus on the user's instructions.\n\n"
-                )
+                if language == "fr":
+                    prompt += (
+                        f"Voici le contexte de la base de données pour les commandes en retard de ce fournisseur :\n"
+                        f"{formatted_list}\n"
+                        f"Si la requête de l'utilisateur concerne des retards ou des commandes, veuillez lister ces commandes et leurs retards exacts. Sinon, concentrez-vous sur les instructions de l'utilisateur.\n\n"
+                    )
+                else:
+                    prompt += (
+                        f"Here is the database context of delayed orders for this supplier:\n"
+                        f"{formatted_list}\n"
+                        f"If the user's query asks about delays/orders, please list these orders and exact delays. Otherwise, focus on the user's instructions.\n\n"
+                    )
             prompt += (
-                f"Respond ONLY with the email subject and email body. "
+                f"Respond ONLY with the email subject and email body in {lang_name}. "
                 f"Do not include any introductory remarks (like 'Here is the email:') or personal notes at the end."
             )
             
@@ -154,42 +179,78 @@ async def query_chatbot(request: ChatRequest, db = Depends(get_db), current_admi
             # fallback: if local Ollama is sleeping, use rule-based template so the user gets an answer
             if not email_text:
                 if "meeting" in message_lower or "réunion" in message_lower:
-                    email_text = (
-                        f"**Subject:** Meeting Reminder - {matched_supplier}\n\n"
-                        f"Dear Partner,\n\n"
-                        f"This is a reminder regarding our meeting scheduled for tomorrow.\n\n"
-                        f"Please confirm your availability and the agenda items.\n\n"
-                        f"Sincerely,\n"
-                        f"**Supply Chain & Procurement Team**"
-                    )
-                else:
-                    orders_details_english = ""
-                    if late_orders:
-                        for order in late_orders:
-                            for l in order["lines"]:
-                                orders_details_english += f"- Order **{order['id']}** (Date: {order['date']}) | Product: SKU #{l['sku']} | Exact Delay: **{l['delay']} days**\n"
-                    
-                    if orders_details_english:
+                    if language == "fr":
                         email_text = (
-                            f"**Subject:** Important Reminder - Delivery Delay for Our Pending Orders\n\n"
-                            f"Dear Partner,\n\n"
-                            f"We are contacting you regarding a delivery delay detected for our orders with your company **{matched_supplier}**.\n\n"
-                            f"As of today, the following orders are delayed:\n"
-                            f"{orders_details_english}\n"
-                            f"These delays directly impact our supply chain and customer commitments. Please check the status of these orders and confirm the exact delivery dates within 24 hours.\n\n"
-                            f"We look forward to your prompt response.\n\n"
-                            f"Sincerely,\n"
-                            f"**Supply Chain & Procurement Team**"
+                            f"**Objet :** Rappel de réunion - {matched_supplier}\n\n"
+                            f"Cher partenaire,\n\n"
+                            f"Ceci est un rappel concernant notre réunion prévue pour demain.\n\n"
+                            f"Veuillez confirmer votre disponibilité et les points de l'ordre du jour.\n\n"
+                            f"Cordialement,\n"
+                            f"**L'équipe Supply Chain & Achats**"
                         )
                     else:
                         email_text = (
-                            f"**Subject:** Business Update Request - {matched_supplier}\n\n"
+                            f"**Subject:** Meeting Reminder - {matched_supplier}\n\n"
                             f"Dear Partner,\n\n"
-                            f"We are reaching out to request a status update on our pending orders and general logistics operations with your team.\n\n"
-                            f"Please let us know your current availability for a quick alignment.\n\n"
+                            f"This is a reminder regarding our meeting scheduled for tomorrow.\n\n"
+                            f"Please confirm your availability and the agenda items.\n\n"
                             f"Sincerely,\n"
                             f"**Supply Chain & Procurement Team**"
                         )
+                else:
+                    orders_details_str = ""
+                    if late_orders:
+                        for order in late_orders:
+                            for l in order["lines"]:
+                                if language == "fr":
+                                    orders_details_str += f"- Commande **{order['id']}** (Date : {order['date']}) | Produit : SKU #{l['sku']} | Retard exact : **{l['delay']} jours**\n"
+                                else:
+                                    orders_details_str += f"- Order **{order['id']}** (Date: {order['date']}) | Product: SKU #{l['sku']} | Exact Delay: **{l['delay']} days**\n"
+                    
+                    if orders_details_str:
+                        if language == "fr":
+                            email_text = (
+                                f"**Objet :** Rappel important - Retard de livraison pour nos commandes en attente\n\n"
+                                f"Cher partenaire,\n\n"
+                                f"Nous vous contactons concernant un retard de livraison détecté pour nos commandes avec votre entreprise **{matched_supplier}**.\n\n"
+                                f"À ce jour, les commandes suivantes sont en retard :\n"
+                                f"{orders_details_str}\n"
+                                f"Ces retards ont un impact direct sur notre supply chain et nos engagements clients. Veuillez vérifier le statut de ces commandes et confirmer les dates de livraison exactes sous 24 heures.\n\n"
+                                f"Dans l'attente de votre réponse rapide.\n\n"
+                                f"Cordialement,\n"
+                                f"**L'équipe Supply Chain & Achats**"
+                            )
+                        else:
+                            email_text = (
+                                f"**Subject:** Important Reminder - Delivery Delay for Our Pending Orders\n\n"
+                                f"Dear Partner,\n\n"
+                                f"We are contacting you regarding a delivery delay detected for our orders with your company **{matched_supplier}**.\n\n"
+                                f"As of today, the following orders are delayed:\n"
+                                f"{orders_details_str}\n"
+                                f"These delays directly impact our supply chain and customer commitments. Please check the status of these orders and confirm the exact delivery dates within 24 hours.\n\n"
+                                f"We look forward to your prompt response.\n\n"
+                                f"Sincerely,\n"
+                                f"**Supply Chain & Procurement Team**"
+                            )
+                    else:
+                        if language == "fr":
+                            email_text = (
+                                f"**Objet :** Demande de mise à jour commerciale - {matched_supplier}\n\n"
+                                f"Cher partenaire,\n\n"
+                                f"Nous vous contactons pour demander une mise à jour sur le statut de nos commandes en attente et sur les opérations logistiques générales avec votre équipe.\n\n"
+                                f"Veuillez nous faire part de votre disponibilité actuelle pour un alignement rapide.\n\n"
+                                f"Cordialement,\n"
+                                f"**L'équipe Supply Chain & Achats**"
+                            )
+                        else:
+                            email_text = (
+                                f"**Subject:** Business Update Request - {matched_supplier}\n\n"
+                                f"Dear Partner,\n\n"
+                                f"We are reaching out to request a status update on our pending orders and general logistics operations with your team.\n\n"
+                                f"Please let us know your current availability for a quick alignment.\n\n"
+                                f"Sincerely,\n"
+                                f"**Supply Chain & Procurement Team**"
+                            )
             
             # try sending the email over SMTP, otherwise print it to logs
             supplier_user = await db["admin"].find_one({"supplier_name": matched_supplier})
@@ -198,28 +259,48 @@ async def query_chatbot(request: ChatRequest, db = Depends(get_db), current_admi
             # regex out the subject line from the LLM output
             subject = f"Important Reminder - {matched_supplier}"
             for line in email_text.split('\n'):
-                if line.lower().startswith("**subject:**") or line.lower().startswith("subject:"):
+                if line.lower().startswith("**subject:**") or line.lower().startswith("subject:") or line.lower().startswith("**objet:**") or line.lower().startswith("objet:"):
                     subject = line.split(":", 1)[1].strip().replace("**", "")
                     break
             
             mail_res = await send_email_notification(to_email, subject, email_text)
             
             status_msg = ""
-            if mail_res.get("simulated"):
-                status_msg = f"\n\n*(Note: The email send was simulated in the development console because the local SMTP server {settings.SMTP_HOST}:{settings.SMTP_PORT} is unreachable. Resolved recipient: `{to_email}`)*"
+            if language == "fr":
+                if mail_res.get("simulated"):
+                    status_msg = f"\n\n*(Note : L'envoi de l'e-mail a été simulé dans la console de développement car le serveur SMTP local {settings.SMTP_HOST}:{settings.SMTP_PORT} est injoignable. Destinataire résolu : `{to_email}`)*"
+                else:
+                    status_msg = f"\n\n*(Succès : E-mail envoyé avec succès via le serveur SMTP {settings.SMTP_HOST}:{settings.SMTP_PORT} à `{to_email}`)*"
+                
+                return {
+                    "response": (
+                        f"L'e-mail de relance a été rédigé et envoyé au fournisseur **{matched_supplier}** :\n\n"
+                        f"---\n\n"
+                        f"{email_text}\n\n"
+                        f"---"
+                        f"{status_msg}"
+                    )
+                }
             else:
-                status_msg = f"\n\n*(Success: Email successfully sent via the SMTP server {settings.SMTP_HOST}:{settings.SMTP_PORT} to `{to_email}`)*"
+                if mail_res.get("simulated"):
+                    status_msg = f"\n\n*(Note: The email send was simulated in the development console because the local SMTP server {settings.SMTP_HOST}:{settings.SMTP_PORT} is unreachable. Resolved recipient: `{to_email}`)*"
+                else:
+                    status_msg = f"\n\n*(Success: Email successfully sent via the SMTP server {settings.SMTP_HOST}:{settings.SMTP_PORT} to `{to_email}`)*"
 
-            return {
-                "response": (
-                    f"The reminder email has been written and sent to the supplier **{matched_supplier}**:\n\n"
-                    f"---\n\n"
-                    f"{email_text}\n\n"
-                    f"---"
-                    f"{status_msg}"
-                )
-            }
+                return {
+                    "response": (
+                        f"The reminder email has been written and sent to the supplier **{matched_supplier}**:\n\n"
+                        f"---\n\n"
+                        f"{email_text}\n\n"
+                        f"---"
+                        f"{status_msg}"
+                    )
+                }
         else:
+            if language == "fr":
+                return {
+                    "response": "Je n'ai trouvé aucun fournisseur dans la base de données pour rédiger l'e-mail."
+                }
             return {
                 "response": "I could not find any supplier in the database to draft the email."
             }
@@ -325,11 +406,14 @@ async def query_chatbot(request: ChatRequest, db = Depends(get_db), current_admi
         pre_context["db_error"] = str(e)
 
     # system prompt for the ReAct loop (Reasoning + Action)
+    lang_name = "French" if language == "fr" else "English"
+    other_lang = "English" if language == "fr" else "French"
     if is_supplier:
         system_prompt = (
             f"You are the 'Supplier Portal AI Assistant' for '{supplier_name}'.\n"
             f"You can ONLY access and discuss data directly related to your company's supplier dashboard and your inventory.\n"
             f"You are strictly prohibited from discussing client details, other suppliers, general company-wide KPIs, or overall system metrics.\n\n"
+            f"You MUST respond in {lang_name} at all times. Do not translate your response to {other_lang}, even if the user queries in {other_lang}.\n\n"
             f"DATABASE SCHEMA & COLLECTIONS:\n"
             f"1. **sales_orders**:\n"
             f"   - Fields: 'id' (int), 'order_date' (str), 'status' (str), 'order_lines' (list of {{'quantity': int, 'unitPrice': float, 'product_sku': int}})\n"
@@ -383,7 +467,7 @@ async def query_chatbot(request: ChatRequest, db = Depends(get_db), current_admi
             "You write: DB_QUERY: {\"collection\": \"anomalies\", \"operation\": \"find_many\", \"filter\": {\"sales_order_id\": 367}}\n\n"
             "FINAL ANSWER INSTRUCTIONS:\n"
             "Once you have the database results (either pre-retrieved or after executing DB_QUERY), write a clean, conversational response to the user. "
-            "You MUST respond in English at all times. Do not translate your response to French, even if the user queries in French.\n"
+            f"You MUST respond in {lang_name} at all times. Do not translate your response to {other_lang}, even if the user queries in {other_lang}.\n"
             "Do not display the DB_QUERY commands to the user. Keep final responses to 3 sentences max. "
             "If the response references a specific sales order ID (e.g. SO 367), you MUST output a markdown link formatted exactly as: [SO #<id>](http://localhost:4200/sales-order?orderId=<id>) so the user can easily open it directly from the chat window."
         )
@@ -488,24 +572,42 @@ async def query_chatbot(request: ChatRequest, db = Depends(get_db), current_admi
             a = pre_context.get("anomalies_for_order", [])
             delay = o.get("real_shipment", 0) - o.get("scheduled_shipment", 0)
             if a:
-                anoms_desc = "\n".join([f"• **{item['anomaly']}**: {item['description']} (Score: {item['score']})" for item in a])
-                return {
-                    "response": (
-                        f"Order [SO #{order_id}](http://localhost:4200/sales-order?orderId={order_id}) has the following anomalies flagged in the database:\n\n"
-                        f"{anoms_desc}\n\n"
-                        f"Details: Profit is **${o.get('order_profit', 0.0):.2f}**, real shipping duration was **{o.get('real_shipment')} days** (promised {o.get('scheduled_shipment')} days)."
-                    )
-                }
+                if language == "fr":
+                    anoms_desc = "\n".join([f"• **{item['anomaly']}** : {item['description']} (Score : {item['score']})" for item in a])
+                    return {
+                        "response": (
+                            f"La commande [SO #{order_id}](http://localhost:4200/sales-order?orderId={order_id}) présente les anomalies suivantes dans la base de données :\n\n"
+                            f"{anoms_desc}\n\n"
+                            f"Détails : Le profit est de **{o.get('order_profit', 0.0):.2f} $**, la durée réelle d'expédition était de **{o.get('real_shipment')} jours** (promis {o.get('scheduled_shipment')} jours)."
+                        )
+                    }
+                else:
+                    anoms_desc = "\n".join([f"• **{item['anomaly']}**: {item['description']} (Score: {item['score']})" for item in a])
+                    return {
+                        "response": (
+                            f"Order [SO #{order_id}](http://localhost:4200/sales-order?orderId={order_id}) has the following anomalies flagged in the database:\n\n"
+                            f"{anoms_desc}\n\n"
+                            f"Details: Profit is **${o.get('order_profit', 0.0):.2f}**, real shipping duration was **{o.get('real_shipment')} days** (promised {o.get('scheduled_shipment')} days)."
+                        )
+                    }
             else:
-                return {
-                    "response": (
-                        f"For [SO #{order_id}](http://localhost:4200/sales-order?orderId={order_id}), no active anomalies are registered in the database. "
-                        f"The order profit margin is **${o.get('order_profit', 0.0):.2f}** and shipping delay was **{delay} days**."
-                    )
-                }
+                if language == "fr":
+                    return {
+                        "response": (
+                            f"Pour la commande [SO #{order_id}](http://localhost:4200/sales-order?orderId={order_id}), aucune anomalie active n'est enregistrée dans la base de données. "
+                            f"Le profit de la commande est de **{o.get('order_profit', 0.0):.2f} $** et le délai d'expédition était de **{delay} jours**."
+                        )
+                    }
+                else:
+                    return {
+                        "response": (
+                            f"For [SO #{order_id}](http://localhost:4200/sales-order?orderId={order_id}), no active anomalies are registered in the database. "
+                            f"The order profit margin is **${o.get('order_profit', 0.0):.2f}** and shipping delay was **{delay} days**."
+                        )
+                    }
         else:
             return {
-                "response": f"I queried the database for SO #{order_id}, but no matching order record was found."
+                "response": f"J'ai interrogé la base de données pour la commande SO #{order_id}, mais aucun enregistrement correspondant n'a été trouvé." if language == "fr" else f"I queried the database for SO #{order_id}, but no matching order record was found."
             }
             
     elif "supplier_info" in pre_context:
@@ -516,84 +618,166 @@ async def query_chatbot(request: ChatRequest, db = Depends(get_db), current_admi
             lines_desc = []
             for p in purchs:
                 sku_list = [str(line.get("product_sku")) for line in p.get("purchase_lines", [])]
-                lines_desc.append(f"• Purchase Order **{p['id']}** on {p['date']} (Type: {p['type']}, Lot: {p['lot']}, SKUs: {', '.join(sku_list)})")
+                if language == "fr":
+                    lines_desc.append(f"• Commande d'achat **{p['id']}** le {p['date']} (Type : {p['type']}, Lot : {p['lot']}, SKUs : {', '.join(sku_list)})")
+                else:
+                    lines_desc.append(f"• Purchase Order **{p['id']}** on {p['date']} (Type: {p['type']}, Lot: {p['lot']}, SKUs: {', '.join(sku_list)})")
             lines_str = "\n".join(lines_desc)
-            return {
-                "response": (
-                    f"Here is the information for the supplier **{sup_name}**:\n\n"
-                    f"Latest purchase orders placed:\n"
-                    f"{lines_str}"
-                )
-            }
+            if language == "fr":
+                return {
+                    "response": (
+                        f"Voici les informations pour le fournisseur **{sup_name}** :\n\n"
+                        f"Dernières commandes d'achat passées :\n"
+                        f"{lines_str}"
+                    )
+                }
+            else:
+                return {
+                    "response": (
+                        f"Here is the information for the supplier **{sup_name}**:\n\n"
+                        f"Latest purchase orders placed:\n"
+                        f"{lines_str}"
+                    )
+                }
         else:
             return {
-                "response": f"I did not find any purchase orders recorded for the supplier **{sup_name}** in the database."
+                "response": f"Je n'ai trouvé aucune commande d'achat enregistrée pour le fournisseur **{sup_name}** dans la base de données." if language == "fr" else f"I did not find any purchase orders recorded for the supplier **{sup_name}** in the database."
             }
 
     elif "supplier" in message_lower or "fournisseur" in message_lower:
         all_suppliers = await db["purchases"].distinct("Supplier")
         if all_suppliers:
             suppliers_str = "\n".join([f"• {sup}" for sup in all_suppliers])
+            if language == "fr":
+                return {
+                    "response": (
+                        f"Voici la liste des fournisseurs enregistrés dans le système :\n\n"
+                        f"{suppliers_str}\n\n"
+                        f"Vous pouvez me poser des questions sur un fournisseur spécifique (ex. : 'parle-moi du fournisseur Nike Manufacturing EU')."
+                    )
+                }
+            else:
+                return {
+                    "response": (
+                        f"Here is the list of registered suppliers in the system:\n\n"
+                        f"{suppliers_str}\n\n"
+                        f"You can ask me about a specific supplier (e.g., 'tell me about the supplier Nike Manufacturing EU')."
+                    )
+                }
+        else:
+            return {
+                "response": "Aucun fournisseur enregistré trouvé dans la base de données." if language == "fr" else "No registered suppliers found in the database."
+            }
+
+    elif "order" in message_lower or "commande" in message_lower:
+        if "count" in message_lower or "combien" in message_lower or "total" in message_lower or "nombre" in message_lower:
+            if is_supplier:
+                if language == "fr":
+                    return {
+                        "response": f"Nous suivons actuellement un total de **{stats.get('total_orders', 0)}** commandes clients liées à vos produits."
+                    }
+                else:
+                    return {
+                        "response": f"We are currently tracking a total of **{stats.get('total_orders', 0)}** customer sales orders related to your products."
+                    }
+            if language == "fr":
+                return {
+                    "response": f"La base de données enregistre actuellement un total de **{stats.get('total_orders')}** commandes."
+                }
+            else:
+                return {
+                    "response": f"The database currently records a total of **{stats.get('total_orders')}** sales orders."
+                }
+    elif "anomaly" in message_lower or "anomalie" in message_lower:
+        if "count" in message_lower or "combien" in message_lower or "total" in message_lower or "nombre" in message_lower:
+            if is_supplier:
+                if language == "fr":
+                    return {
+                        "response": f"Il y a **{stats.get('total_anomalies', 0)}** anomalies actives signalées sur vos commandes associées."
+                    }
+                else:
+                    return {
+                        "response": f"There are **{stats.get('total_anomalies', 0)}** active anomalies flagged across your related sales orders."
+                    }
+            if language == "fr":
+                return {
+                    "response": f"Il y a **{stats.get('total_anomalies', 54)}** anomalies actives signalées sur nos transactions."
+                }
+            else:
+                return {
+                    "response": f"There are **{stats.get('total_anomalies', 54)}** active anomalies flagged across our transactions."
+                }
+    elif "product" in message_lower or "produit" in message_lower:
+        if "count" in message_lower or "combien" in message_lower or "total" in message_lower or "nombre" in message_lower:
+            if is_supplier:
+                if language == "fr":
+                    return {
+                        "response": f"Vous fournissez actuellement **{stats.get('total_products', 0)}** produits suivis dans notre inventaire."
+                    }
+                else:
+                    return {
+                        "response": f"You currently supply **{stats.get('total_products', 0)}** products tracked in our inventory."
+                    }
+            if language == "fr":
+                return {
+                    "response": f"Nous suivons actuellement **{stats.get('total_products', 118)}** produits en stock."
+                }
+            else:
+                return {
+                    "response": f"We are currently tracking **{stats.get('total_products', 118)}** products in stock."
+                }
+    elif "kpi" in message_lower or "otif" in message_lower:
+        if is_supplier:
+            if language == "fr":
+                return {
+                    "response": "Les indicateurs généraux de l'entreprise sont restreints. Veuillez vous référer à votre onglet Tableau Fournisseur pour vos indicateurs spécifiques de délai et d'OTIF."
+                }
+            else:
+                return {
+                    "response": "General company KPIs are restricted. Please refer to your Supplier Dashboard tab for your specific lead time and OTIF metrics."
+                }
+        kpis_list = pre_context.get("kpis", [])
+        if kpis_list:
+            if language == "fr":
+                kpi_desc = "\n".join([f"• **{k['name']}** : {k['value']}% ({k['description']})" for k in kpis_list])
+                return {
+                    "response": f"Voici les KPIs actuels du système :\n\n{kpi_desc}"
+                }
+            else:
+                kpi_desc = "\n".join([f"• **{k['name']}**: {k['value']}% ({k['description']})" for k in kpis_list])
+                return {
+                    "response": f"Here are the current system KPIs:\n\n{kpi_desc}"
+                }
+    
+    if is_supplier:
+        if language == "fr":
             return {
                 "response": (
-                    f"Here is the list of registered suppliers in the system:\n\n"
-                    f"{suppliers_str}\n\n"
-                    f"You can ask me about a specific supplier (e.g., 'tell me about the supplier Nike Manufacturing EU')."
+                    "Je suis votre assistant du portail fournisseur. Vous pouvez me poser des questions sur vos produits spécifiques "
+                    "(ex. : 'vérifier le stock pour le SKU 120') ou sur les commandes associées (ex. : 'détails pour la commande SO 105')."
                 )
             }
         else:
             return {
-                "response": "No registered suppliers found in the database."
-            }
-
-    elif "order" in message_lower and ("count" in message_lower or "how many" in message_lower or "total" in message_lower):
-        if is_supplier:
-            return {
-                "response": f"We are currently tracking a total of **{stats.get('total_orders', 0)}** customer sales orders related to your products."
-            }
-        return {
-            "response": f"The database currently records a total of **{stats.get('total_orders')}** sales orders."
-        }
-    elif "anomaly" in message_lower and ("count" in message_lower or "how many" in message_lower or "total" in message_lower):
-        if is_supplier:
-            return {
-                "response": f"There are **{stats.get('total_anomalies', 0)}** active anomalies flagged across your related sales orders."
-            }
-        return {
-            "response": f"There are **{stats.get('total_anomalies', 54)}** active anomalies flagged across our transactions."
-        }
-    elif "product" in message_lower and ("count" in message_lower or "how many" in message_lower or "total" in message_lower):
-        if is_supplier:
-            return {
-                "response": f"You currently supply **{stats.get('total_products', 0)}** products tracked in our inventory."
-            }
-        return {
-            "response": f"We are currently tracking **{stats.get('total_products', 118)}** products in stock."
-        }
-    elif "kpi" in message_lower or "otif" in message_lower:
-        if is_supplier:
-            return {
-                "response": "General company KPIs are restricted. Please refer to your Supplier Dashboard tab for your specific lead time and OTIF metrics."
-            }
-        kpis_list = pre_context.get("kpis", [])
-        if kpis_list:
-            kpi_desc = "\n".join([f"• **{k['name']}**: {k['value']}% ({k['description']})" for k in kpis_list])
-            return {
-                "response": f"Here are the current system KPIs:\n\n{kpi_desc}"
+                "response": (
+                    "I am your Supplier Portal Assistant. You can query me about your specific products "
+                    "(e.g. 'check stock for SKU 120') or related customer sales orders (e.g. 'details for SO 105')."
+                )
             }
     
-    if is_supplier:
+    if language == "fr":
         return {
             "response": (
-                "I am your Supplier Portal Assistant. You can query me about your specific products "
-                "(e.g. 'check stock for SKU 120') or related customer sales orders (e.g. 'details for SO 105')."
+                "J'ai accès aux connexions de base de données. Vous pouvez m'interroger sur les commandes "
+                "(ex. : 'parle-moi de la commande SO 367' ou 'vérifier les anomalies pour SO 105'), sur les niveaux de stock (ex. : 'vérifier le SKU 120'), "
+                "ou sur les statistiques générales telles que les valeurs KPI et le nombre total de produits."
             )
         }
-    
-    return {
-        "response": (
-            "I have access to database connections. You can query me about orders "
-            "(e.g. 'tell me about SO 367' or 'check anomalies for SO 105'), stock levels (e.g. 'check SKU 120'), "
-            "or general stats like KPI values and total product counts."
-        )
-    }
+    else:
+        return {
+            "response": (
+                "I have access to database connections. You can query me about orders "
+                "(e.g. 'tell me about SO 367' or 'check anomalies for SO 105'), stock levels (e.g. 'check SKU 120'), "
+                "or general stats like KPI values and total product counts."
+            )
+        }
