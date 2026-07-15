@@ -9,6 +9,7 @@ class ProductBase(BaseModel):
     category: str
     current_stock: int
     department_id: str
+    image: Optional[str] = None
     monthly_volume: Optional[float] = 0.0
     cluster: Optional[str] = "LOW PERFORMERS"
     prep_delay: Optional[int] = 4

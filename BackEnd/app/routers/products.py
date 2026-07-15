@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from typing import List, Optional
 from app.core.database import get_db
 from app.services.auth_service import get_current_admin, require_admin_role
-from app.models.product import ProductOut
+from app.models.product import ProductOut, ProductCreate
 from app.models.kpi import DemandForecastOut
 from app.services.forecast_service import retrain_demand_forecast, generate_forecast_explanation
 from app.services.product_service import generate_cluster_summary
@@ -49,6 +49,22 @@ async def get_clusters_summary(language: Optional[str] = None, db = Depends(get_
     query = await _get_product_query_for_user(db, current_admin)
     supplier_name = current_admin.get("supplier_name") if current_admin.get("role") == "supplier" else None
     return {"summary": await generate_cluster_summary(db, query, supplier_name, language)}
+
+
+@router.get("/departments")
+async def get_departments(db = Depends(get_db), current_admin: dict = Depends(get_current_admin)):
+    departments = []
+    async for doc in db["departments"].find().sort("name", 1):
+        departments.append({
+            "id": str(doc.get("id")),
+            "name": str(doc.get("name"))
+        })
+    return departments
+
+@router.get("/categories")
+async def get_categories(db = Depends(get_db), current_admin: dict = Depends(get_current_admin)):
+    categories = await db["products"].distinct("category")
+    return sorted([cat for cat in categories if cat])
 
 
 @router.get("", response_model=List[ProductOut])
@@ -119,6 +135,7 @@ async def get_discount_revenue(db = Depends(get_db), current_admin: dict = Depen
         order_revenues[sku] = doc["revenue"]
         
     results = []
+
     async for p in db["products"].find():
         sku = p.get("sku")
         discount = p.get("discount", 0.0)
@@ -164,3 +181,46 @@ async def trigger_train_delays(db = Depends(get_db), current_admin: dict = Depen
     if res.get("status") == "error":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=res.get("message"))
     return res
+
+import os
+import sys
+import subprocess
+
+def retrain_kmeans_task():
+    python_bin = sys.executable
+    project_root = r"c:\Users\Sabor\Desktop\project"
+    kmeans_script = os.path.join(project_root, "train_kmeans.py")
+    if os.path.exists(kmeans_script):
+        try:
+            subprocess.run([python_bin, kmeans_script], check=True)
+        except Exception:
+            pass
+
+@router.post("", response_model=ProductOut, status_code=status.HTTP_201_CREATED)
+async def create_product(
+    payload: ProductCreate,
+    background_tasks: BackgroundTasks,
+    db = Depends(get_db),
+    current_admin: dict = Depends(require_admin_role)
+):
+    existing = await db["products"].find_one({"sku": payload.sku})
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Product with SKU {payload.sku} already exists."
+        )
+    
+    product_dict = payload.model_dump()
+    result = await db["products"].insert_one(product_dict)
+    
+    # Retrain K-Means clusters in background to sync
+    background_tasks.add_task(retrain_kmeans_task)
+    
+    doc = await db["products"].find_one({"_id": result.inserted_id})
+    product = _serialize_product(doc)
+    if not product:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve created product."
+        )
+    return product

@@ -126,10 +126,23 @@ def clean_and_prepare_ml_datasets(file_path):
         0
     )
     product_stats.to_csv(os.path.join(output_dir, "product_ml_features.csv"), index=False)
-    
+
+    # --- Dataset 5: Delay Prediction features ---
+    print("Preparing delay prediction dataset...")
+    delay_df = pd.DataFrame()
+    np.random.seed(42)
+    delay_df['Config Prep Delay'] = (cleaned_df['Days for shipment (scheduled)'] - 2).clip(lower=1)
+    delay_df['Config Internal Delay'] = np.random.randint(0, 2, len(cleaned_df))
+    delay_df['Config Transport Delay'] = np.random.randint(1, 4, len(cleaned_df))
+    delay_df['Actual Scheduled Shipment'] = cleaned_df['Days for shipping (real)']
+    delay_df['Actual Internal Delay'] = (cleaned_df['Days for shipping (real)'] - cleaned_df['Days for shipment (scheduled)']).clip(lower=0)
+    delay_df['Actual Transport Delay'] = (cleaned_df['Days for shipping (real)'] - 1).clip(lower=0)
+
+    delay_df.to_csv(os.path.join(output_dir, "delay_features.csv"), index=False)
+
     print("\n=== ML PREPROCESSING PIPELINE COMPLETED ===")
     print(f"All outputs saved to: ./{output_dir}")
 
 if __name__ == '__main__':
-    csv_path = r"c:\Users\Sabor\Desktop\tinkering\DataCoSupplyChainDataset.csv"
+    csv_path = r"c:\Users\Sabor\Desktop\project\DataCoSupplyChainDataset.csv"
     clean_and_prepare_ml_datasets(csv_path)
