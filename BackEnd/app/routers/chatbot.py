@@ -343,6 +343,26 @@ async def query_chatbot(request: ChatRequest, language: str = "en", db = Depends
             kpis_cursor = db["kpis"].find({})
             pre_context["kpis"] = [{"name": k["name"], "value": k["value"], "description": k["description"]} async for k in kpis_cursor]
         
+        # Get last sales order
+        if is_supplier:
+            last_order = await db["sales_orders"].find_one(
+                {"order_lines.product_sku": {"$in": list(supplier_skus)}},
+                sort=[("id", -1)]
+            )
+        else:
+            last_order = await db["sales_orders"].find_one(
+                {},
+                sort=[("id", -1)]
+            )
+        if last_order:
+            last_order.pop("_id", None)
+            pre_context["last_sales_order"] = {
+                "id": last_order.get("id"),
+                "order_date": last_order.get("order_date"),
+                "status": last_order.get("status"),
+                "order_profit": last_order.get("order_profit")
+            }
+        
         if order_id is not None:
             # security check: suppliers cannot snoop on other suppliers' orders
             if is_supplier:
@@ -688,6 +708,28 @@ async def query_chatbot(request: ChatRequest, language: str = "en", db = Depends
                 return {
                     "response": f"The database currently records a total of **{stats.get('total_orders')}** sales orders."
                 }
+        elif any(kw in message_lower for kw in ["last", "latest", "dernière", "dernier", "récent", "recent"]):
+            last_order = pre_context.get("last_sales_order")
+            if last_order:
+                order_id = last_order["id"]
+                order_date = last_order["order_date"]
+                if language == "fr":
+                    return {
+                        "response": f"La date de notre dernière commande [SO #{order_id}](http://localhost:4200/sales-order?orderId={order_id}) est le **{order_date}**."
+                    }
+                else:
+                    return {
+                        "response": f"The date of our last sales order [SO #{order_id}](http://localhost:4200/sales-order?orderId={order_id}) is **{order_date}**."
+                    }
+            else:
+                if language == "fr":
+                    return {
+                        "response": "Je n'ai trouvé aucune commande enregistrée dans la base de données."
+                    }
+                else:
+                    return {
+                        "response": "I could not find any sales orders in the database."
+                    }
     elif "anomaly" in message_lower or "anomalie" in message_lower:
         if "count" in message_lower or "combien" in message_lower or "total" in message_lower or "nombre" in message_lower:
             if is_supplier:

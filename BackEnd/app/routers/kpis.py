@@ -60,8 +60,7 @@ def _aggregate_metrics(orders):
     customer_ids = set()
 
     for order in orders:
-        # For total sales KPI, use the reported `order_profit` directly
-        revenue += _to_float(order.get("order_profit", 0.0))
+        revenue += _get_order_revenue(order)
         delay = _get_order_delay(order)
         if delay <= 0:
             ontime_count += 1
