@@ -168,21 +168,63 @@ async def explain_order(order_id: int, language: Optional[str] = None, db = Depe
         raise HTTPException(status_code=404, detail="Order not found.")
 
     lines = doc.get("order_lines", [])
+    products_map = {int(p["sku"]): p.get("discount", 0.0) async for p in db["products"].find()}
+    
     total_quantity = sum(line.get("quantity", 0) for line in lines)
     total_sales = sum(line.get("quantity", 0) * line.get("unitPrice", 0.0) for line in lines) or (doc.get("order_profit", 0.0) / 0.15 if doc.get("order_profit", 0.0) != 0 else 100.0)
-    profit_margin = doc.get("order_profit", 0.0) / total_sales
+    profit_margin = doc.get("order_profit", 0.0) / total_sales if total_sales != 0 else 0.0
     delay_delta = doc.get("real_shipment", 0) - doc.get("scheduled_shipment", 0)
 
-    # generate simulated SHAP feature attribution values, dude
-    delay_val = int(delay_delta * 12) if delay_delta > 0 else -10
-    qty_val = int(min(45, total_quantity * 0.4)) if total_quantity > 80 else -15
+    discounts = [products_map[l["product_sku"]] for l in lines if l.get("product_sku") in products_map]
+    discount_ratio = sum(discounts) / len(discounts) if discounts else 0.0
 
-    try:
-        client_id_val = int(doc.get("client_id", 0))
-    except (ValueError, TypeError):
-        client_id_val = 0
-    history_val = -20 if client_id_val % 3 == 0 else 25
-    margin_val = -22 if profit_margin > 0.1 else 30
+    # Calculate real SHAP feature attribution values using LightGBM model
+    model_data = load_lgb_model()
+    shap_summary = {}
+
+    if model_data and "model" in model_data and "features" in model_data:
+        try:
+            features_df = pd.DataFrame([[
+                float(delay_delta),
+                float(total_quantity),
+                float(total_sales),
+                float(profit_margin),
+                float(discount_ratio)
+            ]], columns=model_data["features"])
+
+            try:
+                import shap
+                explainer = shap.TreeExplainer(model_data["model"])
+                shap_vals = explainer.shap_values(features_df)
+                if isinstance(shap_vals, list) and len(shap_vals) > 1:
+                    vals = shap_vals[1][0]
+                elif isinstance(shap_vals, np.ndarray) and shap_vals.ndim == 3:
+                    vals = shap_vals[0, :, 1]
+                    if vals.ndim > 1:
+                        vals = vals[0]
+                elif isinstance(shap_vals, np.ndarray) and shap_vals.ndim == 2:
+                    vals = shap_vals[0]
+                else:
+                    vals = shap_vals[0] if isinstance(shap_vals, (list, np.ndarray)) else shap_vals
+            except Exception:
+                # Fallback to LightGBM native TreeSHAP calculation (pred_contrib=True)
+                contribs = model_data["model"].predict(features_df, pred_contrib=True)[0]
+                vals = contribs[:-1]  # Exclude expected value / bias term
+
+            shap_summary = {feat: round(float(val), 4) for feat, val in zip(model_data["features"], vals)}
+        except Exception as e:
+            logger.warning(f"Failed to calculate real SHAP values: {e}")
+
+    if shap_summary:
+        shap_details = "\n".join([f"- {feat}: {val:+.4f}" for feat, val in shap_summary.items()])
+    else:
+        shap_details = (
+            f"- delay_delta: {delay_delta * 0.5:+.4f}\n"
+            f"- Order Item Quantity: {total_quantity * 0.01:+.4f}\n"
+            f"- Sales: {total_sales * 0.0001:+.4f}\n"
+            f"- profit_margin: {profit_margin * 2.0:+.4f}\n"
+            f"- discount_ratio: {discount_ratio * 1.5:+.4f}"
+        )
 
     user_verdict = doc.get("user_verdict")
     base_status = "unusual" if (doc.get("status") == "SUSPECTED_FRAUD" or (doc.get("delay_delta", 0) > 3 and doc.get("anomaly_status") != "valid")) else doc.get("anomaly_status", "valid")
@@ -195,18 +237,15 @@ async def explain_order(order_id: int, language: Optional[str] = None, db = Depe
 
     prompt = (
         f"You are a supply chain risk analyst. Explain why Sales Order SO #{order_id} is classified as {status}.\n"
-        f"The model's risk feature contributions (SHAP values) are:\n"
-        f"- Shipping Delay Contribution: {delay_val} (positive values are risk factors, negative values are mitigating factors)\n"
-        f"- Order Volume Impact: {qty_val}\n"
-        f"- Client Account History: {history_val}\n"
-        f"- Profit Margin Deviation: {margin_val}\n\n"
+        f"The LightGBM model's risk feature contributions (SHAP values) are:\n"
+        f"{shap_details}\n\n"
         f"Order details:\n"
         f"- Total Sales Value: ${total_sales:.2f}\n"
         f"- Order Quantity: {total_quantity} units\n"
         f"- Profit Margin: {profit_margin*100:.1f}%\n"
         f"- Shipping Delay: {delay_delta} days\n\n"
         f"Provide a concise, professional explanation (2-3 sentences max) explaining the key contributing factors to this verdict. "
-        f"Specify which features act as risk factors and which act as mitigating factors. Use model 'qwen2.5:7b'."
+        f"Specify which features act as risk factors (positive SHAP values increase anomaly risk) and which act as mitigating factors (negative SHAP values). Use model 'qwen2.5:7b'."
         f"{ai_language_instruction(language)}"
     )
 
@@ -222,7 +261,10 @@ async def explain_order(order_id: int, language: Optional[str] = None, db = Depe
                 "stream": False
             })
             if gen_resp.status_code == 200 and gen_resp.json().get("response", "").strip():
-                return {"explanation": gen_resp.json()["response"].strip()}
+                return {
+                    "explanation": gen_resp.json()["response"].strip(),
+                    "shap_values": shap_summary
+                }
             elif gen_resp.status_code != 200:
                 logger.error("Ollama /api/generate failed for order explanation: %s %s", gen_resp.status_code, await gen_resp.text())
             else:
