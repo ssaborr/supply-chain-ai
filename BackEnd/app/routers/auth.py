@@ -134,7 +134,7 @@ async def login_face(payload: FaceLoginRequest, db = Depends(get_db)):
 
 @router.get("/me", response_model=AdminOut)
 async def read_admin_me(current_admin: dict = Depends(get_current_admin)):
-    # check if they have registered biometrics yet
+    # check for registered biometrics yet
     enrollments = current_admin.get("face_enrollments", [])
     current_admin["has_face_enrolled"] = len(enrollments) > 0
     return current_admin
