@@ -1,116 +1,138 @@
-# Smart Supply Chain Dashboard
+# Smart Supply Chain AI Dashboard
 
-A comprehensive, end-to-end web application that integrates real-time supply chain monitoring, interactive demand forecasting, customer segmentation, anomaly detection, and secure order importation.
+An integrated, end-to-end enterprise decision-support platform designed to transform complex supply chain telemetry into proactive, predictive logistics intelligence.
 
-Built with a **FastAPI backend**, an **Angular frontend**, **MongoDB**, and an array of **Machine Learning models** (ARIMA, LightGBM, KNN, KMeans), this system offers businesses a premium, zero-downtime control center for logistics, sales, and predictive operations.
-
----
-
-## Key Features
-
-### 1. Ingestion & In-Memory Model Hot-Swapping
-*   **Sales Order Importation:** Supports importing sales records from `.csv` and `.xlsx` files with automatic pre-flight schema and header validation.
-*   **Column Deduplication:** Implements robust pandas column deduplication (`df.loc[:, ~df.columns.duplicated()]`) to ensure clean ingestion from raw datasets.
-*   **Zero-Downtime Retraining:** Initiates asynchronous retraining loops in non-blocking OS subprocesses via `asyncio.create_subprocess_exec`. The FastAPI thread stays fully responsive, retaining old model weights in memory and swapping to the new ones atomically upon success.
-
-### 2. Machine Learning Pipeline
-*   **Demand Forecasting (ARIMA):** Predicts 90-day demand volume using an `ARIMA(1, 1, 1)x(1, 0, 1, 7)` seasonal model. Adds deterministic seeded noise (`np.random.seed(product_id)`) based on residual standard deviation to capture realistic daily demand swings instead of outputting flat expectation curves.
-*   **Fraud Detection (LightGBM):** Classifies suspicious transaction patterns (e.g., suspected payment fraud) on the fly during sales order ingestion.
-*   **Anomaly Detection (KNN):** Detects logistics delays and shipment anomalies using multi-dimensional K-Nearest Neighbors.
-*   **Customer Segmentation (KMeans):** Clusters clients using RFM (Recency, Frequency, Monetary) metrics to identify high-value buyers and inactive partnerships.
-
-### 3. Executive AI Summaries & Insights
-*   **Local LLM Integration:** Uses a locally-hosted Ollama model (e.g. `qwen2.5:7b` or `llama3`) to analyze metrics (OTIF service level, stockouts, revenue, anomaly counts) and generate concise, professional executive summaries for supply chain managers.
-*   **Synchronized UI Loading Overlay:** Frontend cards for AI summaries and forecasting charts enter a coordinated loading state when changing product selection to prevent showing stale data.
+Developed for **AddSer Conseil** in collaboration with **ENSA Khouribga**, the platform combines a decoupled **FastAPI** Python backend, a responsive **Angular 17** single-page web application, a document-oriented **MongoDB NoSQL** data store, and a multi-tiered **Artificial Intelligence & Machine Learning pipeline**.
 
 ---
 
-## Project Structure
+## 🌟 Key System Capabilities
+
+### 1. Ingestion Pipeline & Zero-Downtime Hot-Swapping
+* **Batch Sales Order Importation:** Real-time CSV and XLSX order ingestion with automated Pandas schema validation, type checking, and header deduplication.
+* **Non-Blocking Asynchronous Retraining:** Initiates background retraining tasks in isolated OS subprocesses via `asyncio.create_subprocess_exec`. The FastAPI event loop remains 100% unblocked and responsive during training cycles.
+* **Atomic In-Memory Hot-Swapping:** Newly trained model binaries (`.pkl`) overwrite disk files atomically, and active memory pointers update seamlessly with **zero application downtime**.
+
+### 2. Multi-Model Machine Learning Engine
+* **Demand Forecasting (ARIMA & Meta Prophet):** Predicts daily demand velocity over a 90-day horizon with 95% confidence bounds. Uses logarithmic variance transformation $\log(1+y)$ for volatile sales curves and residual Gaussian noise simulation.
+* **Supervised Fraud & Discount Anomaly Classifier (LightGBM):** Real-time classification of unauthorized discount overrides and suspicious transaction patterns upon batch order import.
+* **Logistics Delay Anomaly Detector (KNN):** Distance-based K-Nearest Neighbors ($k=5$) identifying shipment lead-time variances on normalized $Z$-score feature spaces.
+* **Product & Customer RFM Segmentation (K-Means):** Unsupervised clustering categorizing catalog inventory into performance tiers (*High Value, Volume Drivers, Low Performers*) and customers into RFM segments (*Champions, Loyal, At-Risk, Inactive*).
+
+### 3. Biometric Security & Access Control
+* **InsightFace Biometric 2FA:** Facial recognition authentication using CNN face detection ($S_{\text{det}} \ge 0.65$) and normalized 512D ArcFace feature embeddings. Validates identity via cosine similarity matching ($\text{Similarity} \ge 0.65$).
+* **Role-Based Access Control (RBAC):** Strict JWT token validation (24-hour expiration) separating **Executive Admin** and **Supplier Partner** workspace views.
+
+### 4. Conversational AI Assistant & Automated Email Dispatch
+* **Local ReAct Agent (Ollama Qwen2.5):** Natural language text-to-MongoDB translation executing a Reasoning + Acting loop with strict role-scoped query guardrails.
+* **Automated SMTP Supplier Emailing:** Generates context-aware reminder emails for supply risks and dispatches them directly to vendor partners via single-click triggers.
+
+---
+
+## 🏗️ System Architecture
+
+```text
+                                  +------------------------------+
+                                  |     Angular 17 Client UI     |
+                                  | (RxJS, Chart.js, FullCalendar)|
+                                  +--------------+---------------+
+                                                 |
+                                         HTTP / REST API
+                                                 |
+                                  +--------------v---------------+
+                                  |    FastAPI Python Backend    |
+                                  |  (JWT Auth, Motor Driver)    |
+                                  +-------+--------------+-------+
+                                          |              |
+                    +---------------------+              +---------------------+
+                    |                                                          |
+     +--------------v---------------+                          +---------------+--------------+
+     |   MongoDB NoSQL Data Store   |                          |   AI & ML Intelligence Engine|
+     | (Orders, Products, Clients)  |                          | (LightGBM, KNN, Prophet, LLM)|
+     +------------------------------+                          +------------------------------+
+```
+
+---
+
+## 📂 Project Repository Structure
 
 ```text
 ├── BackEnd/
 │   ├── app/
-│   │   ├── core/           # Database configurations and app settings
-│   │   ├── models/         # Pydantic validation schemas
-│   │   ├── routers/        # FastAPI API endpoints (orders, products, kpis, chatbot)
-│   │   └── services/       # Core services (auth, anomaly sync, ML update, ARIMA forecast)
-│   ├── processed_data/     # Rebuilt CSV training sets and pickled model weights
-│   ├── requirements.txt    # Python virtual environment dependencies
-│   ├── run.py              # Backend Uvicorn runner
+│   │   ├── core/           # Database connections and CORS middleware settings
+│   │   ├── models/         # Pydantic data validation schemas
+│   │   ├── routers/        # FastAPI REST API endpoints (orders, products, kpis, chatbot, auth)
+│   │   └── services/       # Core services (ml_update, forecast_service, delay_service, anomaly_sync)
+│   ├── processed_data/     # Feature matrices and serialized model binaries (.gitkeep)
+│   ├── requirements.txt    # Backend Python virtual environment dependencies
+│   ├── run.py              # Backend Uvicorn application runner
 │   ├── seed_db.py          # MongoDB initial seeder script
-│   └── train_global.py     # Standsalone global demand forecast trainer
+│   └── train_global.py     # Global demand forecasting trainer
 ├── FrontEnd/
 │   ├── src/app/
-│   │   ├── dashboard/      # Main executive dashboard component
+│   │   ├── dashboard/      # Main executive control center component
 │   │   ├── demand-forecast/# Forecasting calendar and Chart.js graphics
-│   │   ├── sales-order/    # Sales order data tables and custom import modals
-│   │   └── services/       # Angular HTTP services (auth, route guards)
-│   └── angular.json        # Frontend workspace configuration
-├── arima_model_evaluation.ipynb # Interactive ARIMA evaluation notebook
-├── processed_data/         # Shared output folder for serialized model binaries
-├── test_orders_new.csv     # Pre-configured validation test set (Order IDs offset by 10M)
+│   │   ├── sales-order/    # Order management tables and import modals
+│   │   └── services/       # Angular HTTP services and RBAC route guards
+│   ├── angular.json        # Frontend workspace configuration
+│   └── package.json        # Node.js dependencies and scripts
+├── class_diagram_latest.png# System UML Class Diagram
 └── README.md
 ```
 
 ---
 
-## Tech Stack
+## 🛠️ Technology Stack
 
-*   **Frontend:** Angular 17, TypeScript, RxJS, Chart.js, FullCalendar
-*   **Backend:** FastAPI, Uvicorn, Motor (Async MongoDB Driver)
-*   **Database:** MongoDB
-*   **AI/ML Libraries:** Scikit-Learn, LightGBM, Statsmodels (ARIMA), NumPy, Pandas
-*   **Natural Language:** Ollama (Local LLM API)
+* **Frontend:** Angular 17, TypeScript, RxJS, Chart.js, FullCalendar
+* **Backend:** FastAPI, Uvicorn, Motor (Async MongoDB Driver), Pydantic
+* **Database:** MongoDB Document Store
+* **Machine Learning:** LightGBM, Scikit-Learn, Statsmodels (ARIMA), Meta Prophet, InsightFace, NumPy, Pandas
+* **Generative AI:** Ollama (Local Qwen2.5-7B LLM instance)
 
 ---
 
-## Getting Started
+## 🚀 Quickstart Guide
 
 ### Prerequisites
-*   [Node.js](https://nodejs.org/) (v18+)
-*   [Python](https://www.python.org/) (v3.11+)
-*   [MongoDB](https://www.mongodb.com/) (running locally on port `27017`)
-*   [Ollama](https://ollama.com/) (optional, running locally on port `11434` with model `qwen2.5:7b` installed)
+* **Node.js** (v18.0+)
+* **Python** (v3.11+)
+* **MongoDB** (running locally on port `27017`)
+* **Ollama** (running locally on port `11434` with `qwen2.5:7b` installed)
 
-### 1. Database Setup
-Ensure MongoDB is running, then seed the initial data:
+---
+
+### 1. Database Initialization
+Start MongoDB locally, then seed initial catalog and transaction data:
 ```bash
 cd BackEnd
 python -m venv venv
+# On Windows:
 venv\Scripts\activate
+# On Linux/macOS:
+source venv/bin/activate
+
 pip install -r requirements.txt
 python seed_db.py
 ```
 
-### 2. Run the FastAPI Backend
-Start the Uvicorn web server (hot-reloads automatically on code modifications):
+### 2. Start Backend API Server
+Launch the FastAPI backend server:
 ```bash
 python run.py
 ```
-The API documentation will be available at [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs).
+* **API Interactive OpenAPI Docs:** [http://localhost:8000/docs](http://localhost:8000/docs)
 
-### 3. Run the Angular Frontend
+### 3. Start Frontend Dashboard
+Launch the Angular development server:
 ```bash
 cd FrontEnd
 npm install
 npm run dev
 ```
-The web application will be accessible at [http://localhost:4200](http://localhost:4200).
+* **Dashboard Application:** [http://localhost:4200](http://localhost:4200)
 
 ---
 
-## Interactive ARIMA Model Evaluation
-
-To inspect the training details, summary metrics (MAE, RMSE, MAPE), and plotting evaluations of the demand forecasting engine, you can run the Jupyter Notebook:
-```bash
-pip install jupyter
-jupyter notebook arima_model_evaluation.ipynb
-```
-
----
-
-## Developer Manuals & Reference Guides
-Refer to the `outputs/` directory for detailed documentation:
-*   [Import & Retraining Implementation Guide](outputs/import_feature_implementation.pdf): Full manual detailing Angular and FastAPI integration patterns.
-*   [KPI & Statistics Guide](outputs/KPI_Reference_Guide.pdf): Overview of supply chain metrics calculations.
-*   [Face Liveness Anti-Spoofing Guide](outputs/face_recognition_guide.pdf): Implementation guide on incorporating anti-spoofing checks (like Silent-Face-Anti-Spoofing or Google Mediapipe) to prevent users from bypassing logins with flat photos or screens.
+## 📜 License & Academic Attribution
+Developed by **SABOR Abderrahmane** (2nd Year IRIC Engineering Student, ENSA Khouribga) during the End-of-Year Internship (PFA) at **AddSer Conseil** (Casablanca, Morocco).

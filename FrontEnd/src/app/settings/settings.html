@@ -1,0 +1,330 @@
+<div class="settings-container">
+  <!-- Header Title matching standard layout -->
+  <div class="page-header">
+    <div class="header-text">
+      <h1>{{ 'settings.title' | translate }}</h1>
+      <p class="subtitle">{{ 'settings.subtitle' | translate }}</p>
+    </div>
+  </div>
+
+  <!-- Messages Feedback (no emojis) -->
+  <div *ngIf="errorMessage" class="feedback-alert error-alert">
+    <span class="alert-icon-text">{{ 'common.warning' | translate }}</span>
+    <span class="alert-text">{{ errorMessage }}</span>
+    <button (click)="errorMessage = ''" class="btn-alert-close">×</button>
+  </div>
+  <div *ngIf="successMessage" class="feedback-alert success-alert">
+    <span class="alert-icon-text">{{ 'common.success' | translate }}</span>
+    <span class="alert-text">{{ successMessage }}</span>
+    <button (click)="successMessage = ''" class="btn-alert-close">×</button>
+  </div>
+
+  <!-- Main Multi-Column Layout -->
+  <div class="settings-layout">
+    <!-- User Directory Table Card using standard table classes -->
+    <div class="table-card">
+      <h3 class="card-title">{{ 'settings.userDirectory' | translate }}</h3>
+      <p class="card-description">{{ 'settings.userDirectoryDesc' | translate }}</p>
+      
+      <div *ngIf="isLoading" class="loader-container">
+        <div class="spinner"></div>
+        <p>{{ 'settings.loadingUsers' | translate }}</p>
+      </div>
+
+      <div *ngIf="!isLoading" class="table-wrapper">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>{{ 'settings.userDetails' | translate }}</th>
+              <th>Role</th>
+              <th>{{ 'settings.authorizedTabs' | translate }}</th>
+              <th>{{ 'settings.faceStatus' | translate }}</th>
+              <th>{{ 'sales.action' | translate }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let u of users">
+              <td>
+                <div class="user-info">
+                  <div class="user-avatar">{{ u.first_name[0] }}{{ u.last_name[0] }}</div>
+                  <div class="user-details">
+                    <p class="user-name">{{ u.first_name }} {{ u.last_name }}</p>
+                    <p class="user-email">{{ u.email }}</p>
+                  </div>
+                </div>
+              </td>
+              <td>
+                <span class="badge-role" [class.admin-role]="u.role === 'admin'" [class.sub-role]="u.role === 'sub_admin'" [class.supplier-role]="u.role === 'supplier'">
+                  {{ getRolesLabel(u.role) }}
+                </span>
+              </td>
+              <td>
+                <span class="tabs-list-text" [title]="getFormattedTabs(u)">{{ getFormattedTabs(u) }}</span>
+              </td>
+              <td>
+                <div class="biometric-status">
+                  <span *ngIf="u.role === 'admin'" class="badge-face not-required">
+                    {{ 'settings.notRequired' | translate }}
+                  </span>
+                  <span *ngIf="u.role !== 'admin'" class="badge-face" [class.enrolled]="u.has_face_enrolled">
+                    <span class="status-dot"></span>
+                    {{ u.has_face_enrolled ? ('settings.enrolled' | translate) : ('settings.notEnrolled' | translate) }}
+                  </span>
+                </div>
+              </td>
+              <td>
+                <div class="action-buttons">
+                  <ng-container *ngIf="u.role !== 'admin'">
+                    <button *ngIf="!u.has_face_enrolled" (click)="openEnrollmentScanner(u)" class="btn-action btn-enroll" title="Register Face ID">
+                      {{ 'settings.enrollFace' | translate }}
+                    </button>
+                    <button *ngIf="u.has_face_enrolled" (click)="clearUserFace(u.id)" class="btn-action btn-clear-face" title="Clear face registration">
+                      {{ 'settings.clearFace' | translate }}
+                    </button>
+                  </ng-container>
+                  <button *ngIf="u.id !== loggedInUser?.id" (click)="deleteUser(u.id)" class="btn-action btn-delete-user" title="Delete User">
+                    {{ 'settings.delete' | translate }}
+                  </button>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Create User Sidebar Card -->
+    <div class="card creation-card">
+      <h3 class="card-title">{{ 'settings.addUser' | translate }}</h3>
+      <p class="card-description">{{ 'settings.addUserDesc' | translate }}</p>
+
+      <form (submit)="createUser()" class="creation-form">
+        <div class="form-group">
+          <label for="first_name">{{ 'settings.firstName' | translate }}</label>
+          <input type="text" id="first_name" [(ngModel)]="newUser.first_name" name="first_name" required />
+        </div>
+        <div class="form-group">
+          <label for="last_name">{{ 'settings.lastName' | translate }}</label>
+          <input type="text" id="last_name" [(ngModel)]="newUser.last_name" name="last_name" required />
+        </div>
+        <div class="form-group">
+          <label for="email">{{ 'settings.email' | translate }}</label>
+          <input type="email" id="email" [(ngModel)]="newUser.email" name="email" required />
+        </div>
+        <div class="form-group">
+          <label for="password">{{ 'settings.password' | translate }}</label>
+          <input type="password" id="password" [(ngModel)]="newUser.password" name="password" required />
+        </div>
+        
+        <div class="form-group">
+          <label for="role">{{ 'settings.accessRole' | translate }}</label>
+          <select id="role" [(ngModel)]="newUser.role" name="role" class="select-input">
+            <option value="admin">{{ 'settings.adminRole' | translate }}</option>
+            <option value="sub_admin">{{ 'settings.subAdminRole' | translate }}</option>
+            <option value="supplier">{{ 'settings.supplierRole' | translate }}</option>
+          </select>
+        </div>
+
+        <!-- Supplier specific name -->
+        <div *ngIf="newUser.role === 'supplier'" class="form-group animate-slide">
+          <label for="supplier_name">{{ 'settings.supplierOrg' | translate }}</label>
+          <input type="text" id="supplier_name" [(ngModel)]="newUser.supplier_name" name="supplier_name" required />
+        </div>
+
+        <!-- Custom allowed tabs for sub-admin -->
+        <div *ngIf="newUser.role === 'sub_admin'" class="form-group allowed-tabs-container animate-slide">
+          <label class="section-label">{{ 'settings.authorizedFeatures' | translate }}</label>
+          <p class="section-help">{{ 'settings.authorizedHelp' | translate }}</p>
+          <div class="checkbox-grid">
+            <div *ngFor="let tab of tabList" class="checkbox-item">
+              <input type="checkbox" 
+                     [id]="'tab_' + tab.id" 
+                     [(ngModel)]="newUser.allowed_tabs[tab.id]" 
+                     [name]="'tab_' + tab.id" />
+              <label [for]="'tab_' + tab.id">{{ tab.labelKey | translate }}</label>
+            </div>
+          </div>
+        </div>
+
+        <button type="submit" class="btn-submit">{{ 'settings.addAccount' | translate }}</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Product Delays Configuration Panel -->
+  <div class="table-card product-delays-card" style="margin-top: 24px;">
+    <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+      <div>
+        <h3 class="card-title">{{ 'settings.productDelays' | translate }}</h3>
+        <p class="card-description">{{ 'settings.productDelaysDesc' | translate }}</p>
+      </div>
+      <button (click)="trainDelayModel()" class="btn-action btn-enroll" [disabled]="isTrainingModel" style="min-width: 180px; margin-top: 4px; padding: 10px 16px;">
+        <i class="fa-solid fa-brain" style="margin-right: 6px;"></i>
+        {{ isTrainingModel ? ('settings.optimizeBusy' | translate) : ('settings.optimize' | translate) }}
+      </button>
+    </div>
+
+    <!-- Search bar for products -->
+    <div style="display: flex; gap: 12px; margin: 16px 0; max-width: 400px;">
+      <input type="text" 
+             [placeholder]="'settings.productSearch' | translate"
+             [(ngModel)]="settingsProductSearch" 
+             (ngModelChange)="onProductSearch()" 
+             class="settings-search-input"
+             style="flex: 1; padding: 8px 12px; border: 1.5px solid #e2e8f0; border-radius: 8px; font-size: 13px;" />
+    </div>
+
+    <!-- Products Table -->
+    <div class="table-wrapper">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>{{ 'settings.productDescription' | translate }}</th>
+            <th>{{ 'products.category' | translate }}</th>
+            <th>{{ 'settings.prepDelay' | translate }}</th>
+            <th>{{ 'settings.internalDelay' | translate }}</th>
+            <th>{{ 'settings.transportDelay' | translate }}</th>
+            <th>{{ 'settings.aiRecommendation' | translate }}</th>
+            <th>{{ 'sales.action' | translate }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let p of paginatedProducts">
+            <td>
+              <div class="product-info-cell" style="display: flex; flex-direction: column;">
+                <span style="font-weight: 600; color: #0f172a;">{{ p.name }}</span>
+                <span style="font-family: monospace; font-size: 11px; color: #64748b;">SKU: {{ p.sku }}</span>
+              </div>
+            </td>
+            <td>
+              <span class="badge-role sub-role" style="font-size: 11px;">{{ p.category }}</span>
+            </td>
+            <td>
+              <input type="number" 
+                     min="0" 
+                     max="60" 
+                     [(ngModel)]="p.prep_delay" 
+                     class="delay-input" 
+                     style="width: 70px; padding: 6px; border: 1.5px solid #e2e8f0; border-radius: 6px;" />
+            </td>
+            <td>
+              <input type="number" 
+                     min="0" 
+                     max="60" 
+                     [(ngModel)]="p.internal_delay" 
+                     class="delay-input" 
+                     style="width: 70px; padding: 6px; border: 1.5px solid #e2e8f0; border-radius: 6px;" />
+            </td>
+            <td>
+              <input type="number" 
+                     min="0" 
+                     max="60" 
+                     [(ngModel)]="p.transport_delay" 
+                     class="delay-input" 
+                     style="width: 70px; padding: 6px; border: 1.5px solid #e2e8f0; border-radius: 6px;" />
+            </td>
+            <td>
+              <div class="rec-column" style="font-size: 12px; font-weight: 700;">
+                <ng-container *ngIf="p.rec_prep_delay !== undefined && p.rec_prep_delay !== null; else noRec">
+                  <span [style.color]="getGeneralAdjustmentColor(p)">
+                    {{ getGeneralAdjustmentText(p) }}
+                  </span>
+                </ng-container>
+                <ng-template #noRec>
+                  <span style="color: #94a3b8; font-style: italic; font-weight: 400;">{{ 'settings.noRecommendation' | translate }}</span>
+                </ng-template>
+              </div>
+            </td>
+            <td>
+              <button (click)="saveProductDelays(p)" 
+                      class="btn-action btn-enroll" 
+                      [disabled]="p.isSaving"
+                      style="min-width: 80px;">
+                {{ p.isSaving ? ('common.saving' | translate) : ('common.save' | translate) }}
+              </button>
+            </td>
+          </tr>
+          <tr *ngIf="paginatedProducts.length === 0">
+            <td colspan="7" style="text-align: center; color: #64748b; padding: 24px;">
+              {{ 'settings.noProducts' | translate }}
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Product Pagination Controls -->
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 16px;">
+      <span style="font-size: 13px; color: #64748b;">Page {{ productPage }}</span>
+      <div style="display: flex; gap: 8px;">
+        <button (click)="prevProductPage()" 
+                [disabled]="productPage === 1" 
+                class="btn-action" 
+                style="padding: 6px 12px; border: 1.5px solid #e2e8f0; border-radius: 6px; background: white; cursor: pointer;">
+          ← Prev
+        </button>
+        <button (click)="nextProductPage()" 
+                class="btn-action" 
+                style="padding: 6px 12px; border: 1.5px solid #e2e8f0; border-radius: 6px; background: white; cursor: pointer;">
+          Next →
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Face Enrollment Scanner Modal (Webcam Capture Overlay) -->
+  <div *ngIf="activeEnrollUser" class="modal-overlay">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h4 class="modal-title">{{ 'settings.biometricTitle' | translate }}</h4>
+        <button (click)="closeEnrollmentScanner()" class="btn-modal-close" [disabled]="isProcessingFace">×</button>
+      </div>
+
+      <div class="modal-body">
+        <p class="modal-instruction">
+          {{ 'settings.biometricText' | translate }} <strong>{{ activeEnrollUser.first_name }} {{ activeEnrollUser.last_name }}</strong>.<br>
+          {{ 'settings.alignFace' | translate }}
+        </p>
+
+        <!-- Scanner Feed Container -->
+        <div class="scanner-feed-container">
+          <div *ngIf="!isCameraActive && !faceScanError" class="scanner-init-loader">
+            <div class="spinner"></div>
+            <p>{{ 'settings.startingVideo' | translate }}</p>
+          </div>
+
+          <video #webcamVideo autoplay playsinline muted class="webcam-feed" [class.hidden]="!isCameraActive"></video>
+
+          <!-- Elliptical Face Alignment Overlay Guideline -->
+          <div *ngIf="isCameraActive" class="scanner-guideline-overlay">
+            <div class="ellipse-frame"></div>
+            <p class="overlay-caption">{{ 'settings.centerFace' | translate }}</p>
+          </div>
+
+          <!-- Spinner Overlay during face extraction -->
+          <div *ngIf="isProcessingFace" class="scanner-processing-overlay">
+            <div class="spinner border-blue"></div>
+            <p>{{ 'settings.analyzingFace' | translate }}</p>
+          </div>
+        </div>
+
+        <!-- Real-time Scanner warnings and success readouts -->
+        <div *ngIf="faceScanError" class="scanner-feedback-msg error-feedback">
+          {{ 'common.warning' | translate }} {{ faceScanError }}
+        </div>
+        <div *ngIf="faceScanSuccess" class="scanner-feedback-msg success-feedback">
+          {{ 'common.success' | translate }} {{ faceScanSuccess }}
+        </div>
+
+        <div class="modal-actions">
+          <button (click)="closeEnrollmentScanner()" class="btn-cancel" [disabled]="isProcessingFace">
+            {{ 'common.cancel' | translate }}
+          </button>
+          <button (click)="captureAndEnroll()" class="btn-capture" [disabled]="!isCameraActive || isProcessingFace">
+            {{ 'settings.captureRegister' | translate }}
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

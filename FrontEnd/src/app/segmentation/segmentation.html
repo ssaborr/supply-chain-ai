@@ -1,0 +1,185 @@
+<div class="segmentation-container">
+
+
+  @if (isLoading) {
+    <div class="loading-state">
+      <div class="spinner"></div>
+      <p>{{ 'segmentation.loading' | translate }}</p>
+    </div>
+  } @else {
+    <!-- SECTION 1: CLIENTS RFM SEGMENTATION -->
+    <div class="section-wrapper">
+      <div class="graph-card">
+        <div class="graph-header">
+          <div>
+            <h2>{{ 'segmentation.customerTitle' | translate }}</h2>
+            <p>K-Means Cluster Analysis — X: Recency (days), Y: Monetary spend ($), Dot size: Frequency</p>
+          </div>
+          <div class="graph-legend">
+            <span class="legend-badge champions">CHAMPIONS</span>
+            <span class="legend-badge loyal">LOYAL</span>
+            <span class="legend-badge at-risk">AT RISK</span>
+          </div>
+        </div>
+        <div class="chart-canvas-container">
+          <canvas #clientsChartCanvas></canvas>
+        </div>
+      </div>
+
+      <div class="table-card">
+        <div class="table-header-row">
+          <div class="table-actions-left">
+            <input type="text" 
+                   [(ngModel)]="clientSearch" 
+                   (ngModelChange)="clientPage = 1" 
+                   [placeholder]="'segmentation.searchClients' | translate"
+                   class="search-input" 
+                   style="width: 320px;" />
+            
+            <select id="clientClusterFilter" [(ngModel)]="clientClusterFilter" (change)="onClientFilterChange()" class="status-select-filter">
+              <option value="ALL">{{ 'segmentation.allSegments' | translate }}</option>
+              <option value="CHAMPIONS">CHAMPIONS</option>
+              <option value="LOYAL">LOYAL</option>
+              <option value="AT RISK">AT RISK</option>
+            </select>
+          </div>
+          
+          <div class="table-pagination-info" *ngIf="filteredClients.length > 0">
+            <span>{{ (clientPage - 1) * pageSize + 1 }} - {{ Math.min(clientPage * pageSize, filteredClients.length) }} of {{ filteredClients.length }}</span>
+            <button class="btn-pagination" [disabled]="clientPage === 1" (click)="prevClientPage()" title="Previous Page">◀</button>
+            <button class="btn-pagination" [disabled]="clientPage * pageSize >= filteredClients.length" (click)="nextClientPage()" title="Next Page">▶</button>
+          </div>
+        </div>
+
+        <div class="table-wrapper">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>{{ 'segmentation.clientId' | translate }}</th>
+                <th>{{ 'products.name' | translate }}</th>
+                <th>Email</th>
+                <th>{{ 'segmentation.country' | translate }}</th>
+                <th>{{ 'segmentation.recency' | translate }}</th>
+                <th>{{ 'segmentation.frequency' | translate }}</th>
+                <th>{{ 'segmentation.monetary' | translate }}</th>
+                <th>{{ 'segmentation.verdictSegment' | translate }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (c of paginatedClients; track c.id) {
+                <tr>
+                  <td><span class="mono">C{{ c.id }}</span></td>
+                  <td><span class="bold">{{ c.first_name }} {{ c.last_name }}</span></td>
+                  <td>{{ c.email }}</td>
+                  <td>{{ c.country }}</td>
+                  <td>{{ 'segmentation.daysAgo' | translate:{ count: c.recency } }}</td>
+                  <td>{{ 'common.orders' | translate:{ count: c.frequency } }}</td>
+                  <td><span class="bold">${{ c.monetary.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}</span></td>
+                  <td>
+                    <span class="badge-cluster" 
+                          [class.badge-champions]="c.cluster === 'CHAMPIONS'"
+                          [class.badge-loyal]="c.cluster === 'LOYAL'"
+                          [class.badge-atrisk]="c.cluster === 'AT RISK'">
+                      {{ c.cluster }}
+                    </span>
+                  </td>
+                </tr>
+              } @empty {
+                <tr>
+                  <td colspan="8" class="text-center">{{ 'segmentation.noClients' | translate }}</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- SECTION DIVIDER -->
+    <div class="section-divider"></div>
+
+    <!-- SECTION 2: SUPPLIERS SEGMENTATION -->
+    <div class="section-wrapper">
+      <div class="graph-card">
+        <div class="graph-header">
+          <div>
+            <h2>{{ 'segmentation.supplierTitle' | translate }}</h2>
+            <p>{{ 'segmentation.supplierSubtitle' | translate }}</p>
+          </div>
+          <div class="graph-legend">
+            <span class="legend-badge strategic">STRATEGIC</span>
+            <span class="legend-badge loyal">RELIABLE</span>
+            <span class="legend-badge underperforming">UNDERPERFORMING</span>
+          </div>
+        </div>
+        <div class="chart-canvas-container">
+          <canvas #suppliersChartCanvas></canvas>
+        </div>
+      </div>
+
+      <div class="table-card">
+        <div class="table-header-row">
+          <div class="table-actions-left">
+            <input type="text" 
+                   [(ngModel)]="supplierSearch" 
+                   (ngModelChange)="supplierPage = 1" 
+                   [placeholder]="'segmentation.searchSuppliers' | translate"
+                   class="search-input" 
+                   style="width: 320px;" />
+            
+            <select id="supplierClusterFilter" [(ngModel)]="supplierClusterFilter" (change)="onSupplierFilterChange()" class="status-select-filter">
+              <option value="ALL">{{ 'segmentation.allSegments' | translate }}</option>
+              <option value="STRATEGIC">STRATEGIC</option>
+              <option value="RELIABLE">RELIABLE</option>
+              <option value="UNDERPERFORMING">UNDERPERFORMING</option>
+            </select>
+          </div>
+          
+          <div class="table-pagination-info" *ngIf="filteredSuppliers.length > 0">
+            <span>{{ (supplierPage - 1) * pageSize + 1 }} - {{ Math.min(supplierPage * pageSize, filteredSuppliers.length) }} of {{ filteredSuppliers.length }}</span>
+            <button class="btn-pagination" [disabled]="supplierPage === 1" (click)="prevSupplierPage()" title="Previous Page">◀</button>
+            <button class="btn-pagination" [disabled]="supplierPage * pageSize >= filteredSuppliers.length" (click)="nextSupplierPage()" title="Next Page">▶</button>
+          </div>
+        </div>
+
+        <div class="table-wrapper">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>{{ 'segmentation.supplierName' | translate }}</th>
+                <th>{{ 'segmentation.originPort' | translate }}</th>
+                <th>{{ 'segmentation.averageDelay' | translate }}</th>
+                <th>{{ 'segmentation.totalVolume' | translate }}</th>
+                <th>{{ 'segmentation.totalCost' | translate }}</th>
+                <th>{{ 'segmentation.verdictSegment' | translate }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (s of paginatedSuppliers; track s.name) {
+                <tr>
+                  <td><span class="bold">{{ s.name }}</span></td>
+                  <td>{{ s.origin }}</td>
+                  <td>{{ 'common.days' | translate:{ count: s.avg_delay } }}</td>
+                  <td>{{ 'common.units' | translate:{ count: s.total_volume } }}</td>
+                  <td><span class="bold">${{ s.total_cost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}</span></td>
+                  <td>
+                    <span class="badge-cluster" 
+                          [class.badge-strategic]="s.cluster === 'STRATEGIC'"
+                          [class.badge-reliable]="s.cluster === 'RELIABLE'"
+                          [class.badge-underperforming]="s.cluster === 'UNDERPERFORMING'">
+                      {{ s.cluster }}
+                    </span>
+                  </td>
+                </tr>
+              } @empty {
+                <tr>
+                  <td colspan="6" class="text-center">{{ 'segmentation.noSuppliers' | translate }}</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  }
+</div>

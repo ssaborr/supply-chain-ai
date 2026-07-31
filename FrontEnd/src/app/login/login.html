@@ -1,0 +1,119 @@
+<div class="login-background">
+  <div #lottieContainer class="animated-background"></div>
+  <div class="background-overlay"></div>
+  <div class="login-container">
+  <div class="glass-card">
+    <div class="logo-area">
+      <div class="logo-glow"></div>
+      <img src="logo.png" class="logo-img" alt="Logo" />
+      <h1>Smart Supply Chain</h1>
+      <p class="subtitle">AI-Powered Decision Platform</p>
+    </div>
+
+    @if (errorMessage()) {
+      <div class="alert alert-error">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" class="alert-icon">
+          <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2"/>
+          <line x1="12" y1="8" x2="12" y2="12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          <line x1="12" y1="16" x2="12.01" y2="16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+        <span>{{ errorMessage() }}</span>
+      </div>
+    }
+
+    <form (ngSubmit)="onSubmit()" #loginForm="ngForm">
+      <!-- Credentials input group (only visible when not scanning face) -->
+      <div *ngIf="!isFaceLoginActive()" class="animate-slide">
+        <div class="input-group">
+          <label for="email">Email Address</label>
+          <div class="input-wrapper">
+            <input 
+              type="email" 
+              id="email" 
+              name="email" 
+              [(ngModel)]="email" 
+              required
+              placeholder="name@company.com"
+              autocomplete="email"
+              [disabled]="isLoading()"
+            />
+          </div>
+        </div>
+
+        <div class="input-group" style="margin-top: 14px;">
+          <label for="password">Password</label>
+          <div class="input-wrapper">
+            <input 
+              type="password" 
+              id="password" 
+              name="password" 
+              [(ngModel)]="password" 
+              required 
+              placeholder="••••••••"
+              autocomplete="current-password"
+              [disabled]="isLoading()"
+            />
+          </div>
+        </div>
+
+        <button type="submit" class="btn-submit" [disabled]="isLoading() || !email || !password" style="margin-top: 18px;">
+          @if (isLoading()) {
+            <span class="spinner"></span>
+            <span>Signing in...</span>
+          } @else {
+            <span>Sign In</span>
+          }
+        </button>
+      </div>
+
+      <!-- Face ID Login Scanner Area (Visible for suppliers after password verification) -->
+      <div *ngIf="isFaceLoginActive()" class="face-login-scanner animate-slide">
+        <div class="scanner-header">
+          <p class="scanner-title">Supplier Face ID Verification</p>
+          <p class="scanner-subtitle">Securing access for <strong>{{ email }}</strong></p>
+        </div>
+
+        <div class="scanner-feed-container">
+          <div *ngIf="!isCameraActive() && !faceScanError()" class="scanner-init-loader">
+            <div class="spinner"></div>
+            <p>Initializing camera device...</p>
+          </div>
+
+          <video #webcamVideo autoplay playsinline muted class="webcam-feed" [class.hidden]="!isCameraActive()"></video>
+
+          <!-- Circular scan frame guide -->
+          <div *ngIf="isCameraActive()" class="scanner-guideline-overlay">
+            <div class="ellipse-frame"></div>
+            <p class="overlay-caption">Center your face</p>
+          </div>
+
+          <!-- Spinner Overlay during face extraction -->
+          <div *ngIf="isProcessingFace()" class="scanner-processing-overlay">
+            <div class="spinner border-blue"></div>
+            <p>Matching facial signature...</p>
+          </div>
+        </div>
+
+        <!-- Scanner validation / match status feedback -->
+        <div *ngIf="faceScanError()" class="scanner-feedback-msg error-feedback">
+          <span class="icon"></span> {{ faceScanError() }}
+        </div>
+        <div *ngIf="faceScanSuccess()" class="scanner-feedback-msg success-feedback">
+          <span class="icon">✓</span> {{ faceScanSuccess() }}
+        </div>
+
+        <div class="scanner-actions" style="display: flex; gap: 12px; width: 100%;">
+          <button type="button" class="btn-toggle-auth" (click)="cancelFaceLogin()" [disabled]="isProcessingFace()" style="flex: 1; border: 1px solid #cbd5e1; height: 38px; font-weight: 600; font-size: 13.5px; border-radius: 8px;">
+            Cancel
+          </button>
+          <button type="button" class="btn-submit btn-scan" [disabled]="!isCameraActive() || isProcessingFace()" (click)="loginWithFace()" style="flex: 2; height: 38px;">
+            Scan & Verify
+          </button>
+        </div>
+      </div>
+    </form>
+
+
+  </div>
+</div>
+</div>

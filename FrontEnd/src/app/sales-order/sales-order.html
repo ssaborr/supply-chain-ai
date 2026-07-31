@@ -1,0 +1,719 @@
+<div class="overview-dashboard-page">
+  <!-- Top Executive AI Narrative Summary -->
+  <div class="narrative-card">
+    <div class="icon-container">
+      <div class="check-circle-icon">
+        <img src="/Robot%20-%20Modern%20cute%20chatbot.svg" alt="Robot - Modern cute chatbot icon" class="check-circle-img" />
+      </div>
+    </div>
+    <div class="narrative-content">
+      <h3 class="narrative-title">{{ 'sales.aiTitle' | translate }}</h3>
+      <p class="narrative-text">
+        {{ aiExplanation }}
+      </p>
+    </div>
+  </div>
+
+  <!-- Sales Order Milestone Calendar -->
+  <div class="calendar-card">
+    <div class="calendar-top-bar">
+      <div class="calendar-title-container">
+        <h2>{{ 'sales.calendarTitle' | translate }}</h2>
+        <p class="calendar-subtitle">{{ 'sales.calendarSubtitle' | translate }}</p>
+      </div>
+      
+      <!-- Calendar Search Filter -->
+      <div class="calendar-search-container">
+        <input type="text" 
+               [(ngModel)]="calendarSearchQuery" 
+               (input)="filterCalendarEvents()" 
+               [placeholder]="'sales.calendarSearch' | translate"
+               class="calendar-search-input" />
+      </div>
+    </div>
+
+    <!-- Navigation row: Month Navigation -->
+    <div class="calendar-nav-row">
+      <button class="month-dropdown-btn" title="Select Month/Year">
+        <span>{{ monthNames[currentMonth] }} {{ displayCurrentYear }}</span>
+        <svg xmlns="http://www.w3.org/2000/svg" class="dropdown-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+
+      <div class="nav-buttons">
+        <button (click)="prevMonth()" [disabled]="currentYear === 2026 && currentMonth === 8" class="btn-nav" title="Previous Month">
+          <svg xmlns="http://www.w3.org/2000/svg" style="width: 16px; height: 16px;" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" />
+          </svg>
+        </button>
+        <button (click)="goToToday()" class="btn-today">{{ 'common.today' | translate }}</button>
+        <button (click)="nextMonth()" [disabled]="currentYear === 2026 && currentMonth === 11" class="btn-nav" title="Next Month">
+          <svg xmlns="http://www.w3.org/2000/svg" style="width: 16px; height: 16px;" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    <div class="calendar-grid-wrapper" style="position: relative; min-height: 450px; background: #fff; padding: 12px; border-radius: 8px; border: 1px solid #e2e8f0;">
+      <full-calendar #fullcalendar [options]="calendarOptions"></full-calendar>
+    </div>
+  </div>
+
+  <!-- Orders Table Widget (placed under the calendar stretching full width) -->
+  <div class="table-card">
+    <div class="table-header-row">
+      <div class="table-actions-left" style="display: flex; gap: 12px; align-items: center;">
+        <input type="text" 
+               [(ngModel)]="tableSearchQuery" 
+               (input)="onTableSearchChange()" 
+               [placeholder]="'sales.searchOrders' | translate"
+               class="search-input" />
+        
+        <button (click)="importfn()" class="btn-import-orders-trigger">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512" class="btn-icon">
+            <path fill="currentColor" d="M64 0C28.7 0 0 28.7 0 64l0 240 182.1 0-31-31c-9.4-9.4-9.4-24.6 0-33.9s24.6-9.4 33.9 0l72 72c9.4 9.4 9.4 24.6 0 33.9l-72 72c-9.4 9.4-24.6 9.4-33.9 0s-9.4-24.6 0-33.9l31-31-182.1 0 0 96c0 35.3 28.7 64 64 64l256 0c35.3 0 64-28.7 64-64l0-277.5c0-17-6.7-33.3-18.7-45.3L258.7 18.7C246.7 6.7 230.5 0 213.5 0L64 0zM325.5 176L232 176c-13.3 0-24-10.7-24-24L208 58.5 325.5 176z"/>
+          </svg>
+          {{ 'sales.importOrders' | translate }}
+        </button>
+      </div>
+      <div class="table-pagination-info">
+        <span>{{ getDisplayStartIndex() }} - {{ getDisplayEndIndex() }} of {{ filteredOrders.length }}</span>
+        <button (click)="prevPage()" [disabled]="currentPage === 1" class="btn-pagination" title="Previous Page">◀</button>
+        <button (click)="nextPage()" [disabled]="currentPage * pageSize >= filteredOrders.length" class="btn-pagination" title="Next Page">▶</button>
+      </div>
+
+      </div>
+
+      <div>
+    </div>
+
+    <div class="table-wrapper">
+      <table class="orders-table">
+        <thead>
+          <tr>
+            <th>{{ 'sales.identifier' | translate }}</th>
+            <th>{{ 'sales.orderDate' | translate }}</th>
+            <th>{{ 'sales.shipmentDate' | translate }}</th>
+            <th>Status</th>
+            <th>{{ 'sales.duration' | translate }}</th>
+            <th>{{ 'sales.orderProfit' | translate }}</th>
+            <th>{{ 'sales.client' | translate }}</th>
+            <th>{{ 'sales.anomaly' | translate }}</th>
+            <th>{{ 'sales.category' | translate }}</th>
+            <th>{{ 'sales.action' | translate }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let order of paginatedOrders" 
+              [class.highlighted]="selectedScatterPoint?.id === order.id"
+              (click)="selectScatterPointFromNeighbor(order)"
+              style="cursor: pointer;">
+            <td class="bold-cell">SO{{ order.id }}</td>
+            <td>{{ formatDateString(order.order_date) }}</td>
+            <td>{{ formatDateString(order.delivery_date) }}</td>
+            <td>
+              <span class="badge-status" 
+                    [class.delivered]="order.status === 'COMPLETE' || order.status === 'CLOSED'"
+                    [class.pending]="order.status === 'PROCESSING' || order.status === 'PENDING' || order.status === 'ON_HOLD'"
+                    [class.canceled]="order.status === 'CANCELLED' || order.status === 'SUSPECTED_FRAUD'">
+                {{ (order.status === 'COMPLETE' || order.status === 'CLOSED') ? ('common.delivered' | translate) : (order.status === 'CANCELLED' || order.status === 'SUSPECTED_FRAUD') ? ('common.canceled' | translate) : ('common.pending' | translate) }}
+              </span>
+            </td>
+            <td>{{ 'common.days' | translate:{ count: order.real_shipment } }}</td>
+            <td [class.negative-profit]="order.order_profit < 0">${{ order.order_profit.toFixed(2) }}</td>
+            <td>C{{ order.client_id }}</td>
+            <td>
+              <span class="badge-anomaly" 
+                    [class.valid]="
+                      (!order.user_verdict && order.anomaly_status === 'valid') ||
+                      (order.user_verdict === 'TP' && order.anomaly_status === 'valid') ||
+                      (order.user_verdict === 'FP' && order.anomaly_status !== 'valid')
+                    "
+                    [class.unusual]="
+                      (!order.user_verdict && order.anomaly_status === 'unusual') ||
+                      (order.user_verdict === 'TP' && order.anomaly_status !== 'valid') ||
+                      (order.user_verdict === 'FP' && order.anomaly_status === 'valid')
+                    "
+                    [class.anomaly]="
+                      order.anomaly_status === 'delay anomaly' && !order.user_verdict
+                    ">
+                {{ order.user_verdict ? (order.anomaly_status + ' ' + (order.user_verdict === 'TP' ? ('common.true' | translate) : ('common.false' | translate))) : order.anomaly_status }}
+              </span>
+            </td>
+            <td>{{ order.category }}</td>
+            <td>
+              <button class="btn-details" (click)="openOrderDetailPopup(order); $event.stopPropagation()">{{ 'common.details' | translate }}</button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Bottom Grid of Analysis & Top Products -->
+  <div class="bottom-grid">
+    
+    <!-- Row 1: Scatter Plot + KNN Profile Explainer -->
+    <div class="analysis-row-top">
+      <!-- Interactive Scatter Plot -->
+      <div class="chart-card scatter-card">
+        <div class="chart-header">
+          <div>
+            <h3 class="chart-title">{{ 'sales.distributionTitle' | translate }}</h3>
+            <p class="chart-subtitle">Sales volume (log scale) vs. Profit Margin (%) — colored by LightGBM classification</p>
+          </div>
+          <div class="chart-legend">
+            <span class="legend-dot valid"></span> {{ 'common.valid' | translate }}
+            <span class="legend-dot unusual"></span> {{ 'common.unusual' | translate }} (LightGBM)
+            <span class="legend-dot anomaly"></span> {{ 'common.delayAnomaly' | translate }}
+          </div>
+        </div>
+        <div class="chart-body scatter-plot-body" style="position: relative; height: 350px;">
+          <canvas #scatterChartCanvas></canvas>
+        </div>
+        <div class="scatter-selection-details" *ngIf="selectedScatterPoint">
+          {{ 'sales.selectedPrefix' | translate }} <strong>SO{{ selectedScatterPoint.id }}</strong> ({{ 'sales.client' | translate }} C{{ selectedScatterPoint.client }}, {{ 'sales.category' | translate }}: {{ selectedScatterPoint.category }})
+          | {{ 'sales.sales' | translate }}: <strong>${{ selectedScatterPoint.sales.toFixed(2) }}</strong>
+          | {{ 'sales.profit' | translate }}: <strong [class.negative-profit]="selectedScatterPoint.profit < 0">${{ selectedScatterPoint.profit.toFixed(2) }}</strong>
+          | {{ 'sales.margin' | translate }}: <strong>{{ selectedScatterPoint.margin.toFixed(1) }}%</strong>
+          | {{ 'sales.modelStatus' | translate }}: <span class="badge-status" [class.valid]="selectedScatterPoint.status === 'valid'" [class.unusual]="selectedScatterPoint.status === 'unusual'" [class.anomaly]="selectedScatterPoint.status === 'delay anomaly'">{{ selectedScatterPoint.status.toUpperCase() }}</span>
+        </div>
+      </div>
+
+      <!-- LightGBM Anomaly Feature Explainer Card -->
+      <div class="chart-card explanation-card">
+        <div class="chart-header">
+          <div>
+            <h3 class="chart-title">{{ 'sales.analysisTitle' | translate }}</h3>
+            <p class="chart-subtitle">
+              {{ selectedScatterPoint ? ('sales.analysisSubtitleSelected' | translate:{ id: selectedScatterPoint.id }) : ('sales.analysisSubtitleEmpty' | translate) }}
+            </p>
+          </div>
+          <span class="badge-method">LIGHTGBM CLASSIFIER</span>
+        </div>
+        
+        <div class="chart-body explanation-body">
+          <div *ngIf="!selectedScatterPoint" class="no-selection-placeholder">
+            <svg xmlns="http://www.w3.org/2000/svg" class="placeholder-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              <path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+            </svg>
+            <p>{{ 'sales.noSelection' | translate }}</p>
+          </div>
+          
+          <div *ngIf="selectedScatterPoint" class="explainer-chart-container">
+            <!-- Feature Row: Sales -->
+            <div class="feature-bar-row">
+              <div class="feature-label-wrapper">
+                <span class="feature-name">{{ 'sales.salesVolume' | translate }}</span>
+                <span class="feature-values">${{ selectedScatterPoint.sales.toFixed(0) }} vs. ${{ avgValidSales.toFixed(0) }}</span>
+              </div>
+              <div class="bar-track">
+                <div class="bar-value baseline" [style.width.%]="50"></div>
+                <div class="bar-value current" 
+                     [class.valid]="selectedScatterPoint.status === 'valid'"
+                     [class.unusual]="selectedScatterPoint.status === 'unusual'"
+                     [class.anomaly]="selectedScatterPoint.status === 'delay anomaly'"
+                     [style.width.%]="getFeatureBarWidth(selectedScatterPoint.sales, avgValidSales)"></div>
+              </div>
+            </div>
+
+            <!-- Feature Row: Profit Margin -->
+            <div class="feature-bar-row">
+              <div class="feature-label-wrapper">
+                <span class="feature-name">{{ 'sales.profitMargin' | translate }}</span>
+                <span class="feature-values">{{ (selectedScatterPoint.profit / (selectedScatterPoint.sales || 1) * 100).toFixed(0) }}% vs. {{ (avgValidProfit / (avgValidSales || 1) * 100).toFixed(0) }}%</span>
+              </div>
+              <div class="bar-track">
+                <div class="bar-value baseline" [style.width.%]="50"></div>
+                <div class="bar-value current" 
+                     [class.valid]="selectedScatterPoint.status === 'valid'"
+                     [class.unusual]="selectedScatterPoint.status === 'unusual'"
+                     [class.anomaly]="selectedScatterPoint.status === 'delay anomaly'"
+                     [style.width.%]="getFeatureBarWidth(selectedScatterPoint.profit / (selectedScatterPoint.sales || 1), avgValidProfit / (avgValidSales || 1))"></div>
+              </div>
+            </div>
+
+            <!-- Feature Row: Quantity -->
+            <div class="feature-bar-row">
+              <div class="feature-label-wrapper">
+                <span class="feature-name">{{ 'sales.quantity' | translate }}</span>
+                <span class="feature-values">{{ 'common.units' | translate:{ count: selectedOrderQuantity } }} {{ 'sales.vs' | translate }} {{ 'common.units' | translate:{ count: avgValidQuantity.toFixed(0) } }}</span>
+              </div>
+              <div class="bar-track">
+                <div class="bar-value baseline" [style.width.%]="50"></div>
+                <div class="bar-value current" 
+                     [class.valid]="selectedScatterPoint.status === 'valid'"
+                     [class.unusual]="selectedScatterPoint.status === 'unusual'"
+                     [class.anomaly]="selectedScatterPoint.status === 'delay anomaly'"
+                     [style.width.%]="getFeatureBarWidth(selectedOrderQuantity, avgValidQuantity)"></div>
+              </div>
+            </div>
+
+            <!-- Feature Row: Delay Delta -->
+            <div class="feature-bar-row">
+              <div class="feature-label-wrapper">
+                <span class="feature-name">{{ 'sales.delayDelta' | translate }}</span>
+                <span class="feature-values">{{ 'common.days' | translate:{ count: selectedOrderDelay } }} {{ 'sales.vs' | translate }} {{ 'common.days' | translate:{ count: avgValidDelay.toFixed(1) } }}</span>
+              </div>
+              <div class="bar-track">
+                <div class="bar-value baseline" [style.width.%]="50"></div>
+                <div class="bar-value current" 
+                     [class.valid]="selectedScatterPoint.status === 'valid'"
+                     [class.unusual]="selectedScatterPoint.status === 'unusual'"
+                     [class.anomaly]="selectedScatterPoint.status === 'delay anomaly'"
+                     [style.width.%]="getFeatureBarWidth(selectedOrderDelay, avgValidDelay)"></div>
+              </div>
+            </div>
+
+            <!-- Nearest Neighbors Voting Section -->
+            <div class="neighbors-voting-section">
+              <h4 class="voting-title">{{ 'sales.neighborsTitle' | translate }}</h4>
+              
+              <div class="voting-summary-bar">
+                <span class="voting-count">
+                  {{ 'sales.unusualNeighbors' | translate:{ count: getUnusualNeighborCount() } }}
+                </span>
+                <span class="voting-risk" [class.high-risk]="getUnusualNeighborCount() >= 3">
+                  {{ 'sales.knnRisk' | translate:{ value: (getUnusualNeighborCount() / 5 * 100).toFixed(0) } }}
+                </span>
+              </div>
+              
+              <div class="neighbors-list">
+                <div *ngFor="let n of nearestNeighbors" 
+                     class="neighbor-item" 
+                     (click)="selectScatterPointFromNeighbor(n.order)"
+                     title="Click to view this neighbor's profile">
+                  <span class="neighbor-id">SO{{ n.order.id }}</span>
+                  <span class="neighbor-status badge-anomaly" 
+                        [class.valid]="n.order.anomaly_status === 'valid'" 
+                        [class.unusual]="n.order.anomaly_status === 'unusual'" 
+                        [class.anomaly]="n.order.anomaly_status === 'delay anomaly'">
+                    {{ n.order.anomaly_status }}
+                  </span>
+                  <span class="neighbor-dist">Dist: {{ n.dist.toFixed(3) }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <div class="explainer-legend" *ngIf="selectedScatterPoint">
+          <div class="legend-item">
+            <span class="legend-box baseline"></span>
+            <span class="legend-label">{{ 'sales.baseline' | translate }}</span>
+          </div>
+          <div class="legend-item">
+            <span class="legend-box current" 
+                  [class.valid]="selectedScatterPoint.status === 'valid'"
+                  [class.unusual]="selectedScatterPoint.status === 'unusual'"
+                  [class.anomaly]="selectedScatterPoint.status === 'delay anomaly'"></span>
+            <span class="legend-label">SO{{ selectedScatterPoint.id }} ({{ 'sales.current' | translate }})</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Row 2: Revenue vs Discount Depth + Top Selling Products -->
+    <div class="analysis-row-bottom">
+      <!-- Bottom Revenue vs Discount Depth Curve -->
+      <div class="chart-card revenue-depth-card">
+        <div class="chart-header">
+          <div>
+            <h3 class="chart-title">{{ 'dashboard.discountTitle' | translate }}</h3>
+            <p class="chart-subtitle">{{ 'dashboard.discountSubtitle' | translate }}</p>
+          </div>
+        </div>
+        <div class="chart-body revenue-depth-body" style="position: relative; height: 240px; display: block; width: 100%;">
+          <canvas #discountChartCanvas></canvas>
+        </div>
+        <div class="revenue-depth-legend">
+          <span class="legend-line revenue"></span> {{ 'common.revenue' | translate }}
+          <span class="legend-line units-sold"></span> {{ 'common.unitsSold' | translate }}
+        </div>
+      </div>
+
+      <!-- Right Sidebar: Top Selling Products (styled to fit nicely in the grid layout) -->
+      <div class="sidebar-card">
+        <div class="sidebar-header">
+          <h3>{{ 'dashboard.topProducts' | translate }}</h3>
+          <a href="#" class="view-all-link">{{ 'dashboard.viewAllInventory' | translate }} -></a>
+        </div>
+        <div class="products-list">
+          <div *ngFor="let p of topProducts" class="product-item">
+            <img [src]="p.image" class="product-img" alt="product image" />
+            <div class="product-info">
+              <h4 class="product-name">{{ p.name }}</h4>
+              <p class="product-sales">{{ p.sales }}</p>
+            </div>
+            <div class="product-pricing">
+              <p class="product-price">{{ p.price }}</p>
+              <span class="product-change" [class.positive]="p.isPositive" [class.negative]="!p.isPositive">
+                {{ p.change }}
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- 4. Detail Popup Modal -->
+<div class="modal-backdrop" *ngIf="showDetailPopup">
+  <div class="analysis-modal">
+    <!-- Modal Header -->
+    <div class="modal-header">
+      <div class="header-text-container">
+        <h2 class="modal-title">{{ 'sales.modalTitle' | translate:{ id: selectedOrderForPopup.id } }}</h2>
+        <p class="modal-subtitle">
+          {{ 'sales.modalSubtitle' | translate:{ date: formatDateString(selectedOrderForPopup.order_date), client: selectedOrderForPopup.client_id, category: selectedOrderForPopup.category } }}
+        </p>
+      </div>
+      <button class="btn-close-modal" (click)="closeDetailPopup()">&times;</button>
+    </div>
+
+    <!-- Modal Badges -->
+    <div class="modal-badges-row">
+      <span class="badge-status" 
+            [class.delivered]="selectedOrderForPopup.status === 'COMPLETE' || selectedOrderForPopup.status === 'CLOSED'"
+            [class.pending]="selectedOrderForPopup.status === 'PROCESSING' || selectedOrderForPopup.status === 'PENDING' || selectedOrderForPopup.status === 'ON_HOLD'"
+            [class.canceled]="selectedOrderForPopup.status === 'CANCELLED' || selectedOrderForPopup.status === 'SUSPECTED_FRAUD'">
+        {{ selectedOrderForPopup.status }}
+      </span>
+      <span class="badge-anomaly" 
+            [class.valid]="
+              (!selectedOrderForPopup.user_verdict && selectedOrderForPopup.anomaly_status === 'valid') ||
+              (selectedOrderForPopup.user_verdict === 'TP' && selectedOrderForPopup.anomaly_status === 'valid') ||
+              (selectedOrderForPopup.user_verdict === 'FP' && selectedOrderForPopup.anomaly_status !== 'valid')
+            "
+            [class.unusual]="
+              (!selectedOrderForPopup.user_verdict && selectedOrderForPopup.anomaly_status === 'unusual') ||
+              (selectedOrderForPopup.user_verdict === 'TP' && selectedOrderForPopup.anomaly_status !== 'valid') ||
+              (selectedOrderForPopup.user_verdict === 'FP' && selectedOrderForPopup.anomaly_status === 'valid')
+            "
+            [class.anomaly]="
+              selectedOrderForPopup.anomaly_status === 'delay anomaly' && !selectedOrderForPopup.user_verdict
+            ">
+        {{ selectedOrderForPopup.user_verdict ? (selectedOrderForPopup.anomaly_status + ' ' + (selectedOrderForPopup.user_verdict === 'TP' ? 'True' : 'False')) : selectedOrderForPopup.anomaly_status }}
+      </span>
+    </div>
+
+    <!-- Modal Body -->
+    <div class="modal-body-content">
+      
+      <!-- Section 1: ML Feature Contribution (SHAP Bar Chart) -->
+      <div class="modal-section-card">
+        <h4 class="section-title">{{ 'sales.mlContributions' | translate }}</h4>
+        <div class="shap-chart-container">
+          <div class="shap-bar-row" *ngFor="let feat of shapFeatures">
+            <div class="shap-feat-name">{{ feat.name }}</div>
+            <div class="shap-bar-track">
+              <!-- Center Line -->
+              <div class="shap-center-line"></div>
+              
+              <!-- Left Half (Mitigating factor: negative contribution, points left) -->
+              <div class="shap-half left-half">
+                <div class="shap-bar-fill mitigating" 
+                     *ngIf="feat.value < 0" 
+                     [style.width.%]="mathAbs(feat.value) * 1.8">
+                  <span class="shap-val-label">{{ feat.value }}</span>
+                </div>
+              </div>
+              
+              <!-- Right Half (Risk factor: positive contribution, points right) -->
+              <div class="shap-half right-half">
+                <div class="shap-bar-fill risk" 
+                     *ngIf="feat.value >= 0" 
+                     [style.width.%]="feat.value * 1.8">
+                  <span class="shap-val-label">+{{ feat.value }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <!-- Legend -->
+          <div class="shap-legend-row">
+            <div class="legend-item"><span class="legend-box green"></span> {{ 'sales.mitigating' | translate }}</div>
+            <div class="legend-item"><span class="legend-box red"></span> {{ 'sales.riskFactor' | translate }}</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Section 2: Relational Insight Network -->
+      <div class="modal-section-card">
+        <h4 class="section-title">{{ 'sales.orderChain' | translate }}</h4>
+        <div class="relational-network-container">
+          <ng-container *ngFor="let node of popupNetworkNodes; let last = last; let i = index">
+            <!-- Node Card -->
+            <div class="network-node" 
+                 [class.primary]="node.type === 'client'" 
+                 [class.current]="node.type === 'SO' || node.type === 'milestone'" 
+                 [class.anomaly-node]="node.type === 'delay'">
+              <div class="node-icon-container">
+                <!-- Professional Vector Logos -->
+                <svg *ngIf="node.type === 'client'" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="node-svg-icon">
+                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                  <circle cx="12" cy="7" r="4"></circle>
+                </svg>
+                
+                <svg *ngIf="node.type === 'SO'" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="node-svg-icon">
+                  <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+                  <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
+                  <line x1="12" y1="22.08" x2="12" y2="12"></line>
+                </svg>
+                
+                <svg *ngIf="node.type === 'milestone'" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="node-svg-icon">
+                  <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                  <line x1="16" y1="2" x2="16" y2="6"></line>
+                  <line x1="8" y1="2" x2="8" y2="6"></line>
+                  <line x1="3" y1="10" x2="21" y2="10"></line>
+                </svg>
+                
+                <svg *ngIf="node.type === 'delay'" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="node-svg-icon text-red">
+                  <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+                  <line x1="12" y1="9" x2="12" y2="13"></line>
+                  <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                </svg>
+              </div>
+              <div class="node-label">{{ node.label }}</div>
+              <div class="node-sub" [class.barred]="node.isBarred">{{ node.sub }}</div>
+            </div>
+            
+            <!-- Link Arrow -->
+            <div class="network-link" [class.high-risk]="node.linkRisk" *ngIf="!last">
+              <div class="link-label" [class.text-red]="node.linkRisk">{{ node.linkLabel }}</div>
+              <div class="link-arrow" [class.text-red]="node.linkRisk">&rarr;</div>
+            </div>
+          </ng-container>
+        </div>
+      </div>
+
+      <div class="modal-section-card summary-card">
+        <h4 class="section-title text-blue">{{ 'sales.aiSummary' | translate }}</h4>
+        <p class="summary-paragraph">
+          {{ popupAiSummary }}
+        </p>
+      </div>
+
+      <div class="modal-section-card">
+        <h4 class="section-title">{{ 'sales.confusionTitle' | translate }}</h4>
+        <table class="evaluation-table">
+          <thead>
+            <tr>
+              <th>{{ 'sales.modelPrediction' | translate }}</th>
+              <th>{{ 'sales.userVerdict' | translate }}</th>
+            
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>
+                <span class="badge-prediction text-red" *ngIf="selectedOrderForPopup.anomaly_status === 'unusual'">{{ 'common.anomaly' | translate }}</span>
+                <span class="badge-prediction text-gray" *ngIf="selectedOrderForPopup.anomaly_status !== 'unusual'">{{ 'common.valid' | translate }}</span>
+              </td>
+              <td>
+                <span class="verdict-span bold" *ngIf="selectedOrderForPopup.user_verdict">
+                  {{ selectedOrderForPopup.user_verdict === 'TP' ? ('common.true' | translate) : ('common.false' | translate) }}
+                </span>
+                <span class="verdict-span text-muted" *ngIf="!selectedOrderForPopup.user_verdict">{{ 'sales.pendingReview' | translate }}</span>
+              </td>
+
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Section 5: Decision / Comment -->
+      <div class="modal-section-card decision-card">
+        <div *ngIf="selectedOrderForPopup.user_verdict; else inputForm">
+          <h4 class="section-title">{{ 'sales.savedVerdict' | translate }}</h4>
+          <div class="saved-decision-box">
+            <div class="saved-verdict-row">
+              <strong>{{ 'sales.verdict' | translate }}</strong> 
+              <span class="verdict-badge" [class.tp]="selectedOrderForPopup.user_verdict === 'TP'" [class.fp]="selectedOrderForPopup.user_verdict === 'FP'">
+                {{ selectedOrderForPopup.user_verdict === 'TP' ? ('sales.trueVerdict' | translate) : ('sales.falseVerdict' | translate) }}
+              </span>
+            </div>
+            <div class="saved-desc-row">
+              <strong>{{ 'sales.reason' | translate }}</strong>
+              <p class="saved-comment-text">{{ selectedOrderForPopup.user_description || ('common.noComment' | translate) }}</p>
+            </div>
+          </div>
+        </div>
+        
+        <ng-template #inputForm>
+          <h4 class="section-title">{{ 'sales.logVerdict' | translate }}</h4>
+          <textarea [(ngModel)]="popupDecisionComment" 
+                    [placeholder]="'sales.commentPlaceholder' | translate"
+                    class="decision-textarea"></textarea>
+        </ng-template>
+      </div>
+    </div>
+
+    <!-- Modal Footer -->
+    <div class="modal-footer">
+      <span class="generation-timestamp">{{ 'sales.generated' | translate }}</span>
+      <div class="footer-buttons">
+        <div *ngIf="!selectedOrderForPopup.user_verdict" style="display: flex; gap: 8px;">
+          <button class="btn-verdict fp" (click)="saveVerdict('FP')">{{ 'sales.markFalse' | translate }}</button>
+          <button class="btn-verdict tp" (click)="saveVerdict('TP')">{{ 'sales.markTrue' | translate }}</button>
+        </div>
+        <button class="btn-close-footer" (click)="closeDetailPopup()">{{ 'common.close' | translate }}</button>
+      </div>
+    </div>
+  </div>
+</div>
+<!-- 4.5. Upload Modal -->
+<div class="modal-backdrop" *ngIf="isImportModalOpen" style="display: flex !important; z-index: 100000 !important; opacity: 1 !important; visibility: visible !important;">
+  <div class="analysis-modal import-modal">
+    <!-- Modal Header -->
+    <div class="modal-header">
+      <h2 class="modal-title">{{ 'sales.importTitle' | translate }}</h2>
+      <button class="btn-close-modal" (click)="closeImportModal()">&times;</button>
+    </div>
+    
+    <!-- Modal Body -->
+    <div class="modal-body-content">
+      <div class="modal-section-card" style="padding: 20px;">
+        <p style="margin-top: 0; color: #475569; font-size: 13px; line-height: 1.5; margin-bottom: 16px;">
+          {{ 'sales.importDescription' | translate }}
+        </p>
+        
+        <!-- Download Example Template File -->
+        <div style="margin-bottom: 16px; display: flex; justify-content: flex-start;">
+          <button type="button" class="btn-download-template" (click)="downloadTemplate()">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" style="width: 14px; height: 14px; fill: currentColor;">
+              <path d="M288 32c0-17.7-14.3-32-32-32s-32 14.3-32 32V274.7L119 170.7c-12.5-12.5-32.8-12.5-45.3 0s-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0l160-160c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0L288 274.7V32zM64 352c-17.7 0-32 14.3-32 32v96c0 17.7 14.3 32 32 32H448c17.7 0 32-14.3 32-32V384c0-17.7-14.3-32-32-32H384c-17.7 0-32 14.3-32 32s14.3 32 32 32h32v64H96V416h32c17.7 0 32-14.3 32-32s-14.3-32-32-32H64z"/>
+            </svg>
+            Download Example File (test_orders_new.csv)
+          </button>
+        </div>
+        
+        <!-- File Upload Zone -->
+        <div class="file-upload-zone" (click)="triggerFileInput()" *ngIf="!selectedFileForImport">
+          <svg class="upload-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512" style="width: 40px; height: 40px; margin-bottom: 8px; color: #3b82f6;">
+            <path fill="currentColor" d="M64 0C28.7 0 0 28.7 0 64V448c0 35.3 28.7 64 64 64H320c35.3 0 64-28.7 64-64V160L224 0H64zM224 32L352 160H224V32zM176 288V416c0 8.8-7.2 16-16 16s-16-7.2-16-16V288L121 313c-6.2 6.2-16.4 6.2-22.6 0s-6.2-16.4 0-22.6l57-57c6.2-6.2 16.4-6.2 22.6 0l57 57c6.2 6.2 6.2 16.4 0 22.6s-16.4 6.2-22.6 0l-23-23z"/>
+          </svg>
+          <span style="font-size: 13px; color: #64748b; font-weight: 500;">{{ 'sales.browseFile' | translate }}</span>
+          <span style="font-size: 11px; color: #94a3b8; margin-top: 4px;">{{ 'sales.supportedFiles' | translate }}</span>
+        </div>
+
+        <!-- Selected File View -->
+        <div class="selected-file-info" *ngIf="selectedFileForImport" style="margin-top: 0;">
+          <div class="file-details">
+            <span class="file-name">{{ selectedFileForImport.name }}</span>
+            <span class="file-size">({{ formatBytes(selectedFileForImport.size) }})</span>
+          </div>
+          <button class="btn-remove-file" (click)="removeSelectedFile()">&times;</button>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Modal Footer -->
+    <div class="modal-footer">
+      <button class="btn-cancel" (click)="closeImportModal()">{{ 'common.cancel' | translate }}</button>
+      <button class="btn-import-submit" (click)="validateUploadedFile()" [disabled]="!selectedFileForImport">
+        {{ 'sales.validateColumns' | translate }}
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- 5. Confirm Import Modal -->
+<div class="modal-backdrop" *ngIf="isConfirmModalOpen" style="display: flex !important; z-index: 100000 !important; opacity: 1 !important; visibility: visible !important;">
+  <div class="analysis-modal import-modal">
+    <!-- Modal Header -->
+    <div class="modal-header">
+      <h2 class="modal-title">{{ 'sales.confirmImportTitle' | translate }}</h2>
+      <button class="btn-close-modal" (click)="closeConfirmModal()">&times;</button>
+    </div>
+    
+    <!-- Modal Body -->
+    <div class="modal-body-content">
+      <div class="modal-section-card" style="padding: 20px;">
+        <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px;">
+          <span class="status-indicator success" style="background: #d1fae5; color: #065f46; padding: 6px 12px; border-radius: 20px; font-size: 11px; font-weight: 700;">{{ 'sales.checkPassed' | translate }}</span>
+          <h3 style="margin: 0; font-size: 15px; color: #0f172a; font-weight: 600;">{{ 'sales.columnsExist' | translate }}</h3>
+        </div>
+        
+        <table style="width: 100%; border-collapse: collapse; font-size: 13px; color: #334155; margin-bottom: 16px;">
+          <tr>
+            <td style="padding: 6px 0; font-weight: 600; width: 140px; color: #475569;">{{ 'sales.fileName' | translate }}</td>
+            <td style="padding: 6px 0; color: #0f172a;">{{ selectedFileName }}</td>
+          </tr>
+          <tr>
+            <td style="padding: 6px 0; font-weight: 600; color: #475569;">{{ 'sales.totalOrdersFound' | translate }}</td>
+            <td style="padding: 6px 0; color: #0f172a;">{{ validationCount }}</td>
+          </tr>
+          <tr>
+            <td style="padding: 6px 0; font-weight: 600; vertical-align: top; color: #475569;">{{ 'sales.mappedColumns' | translate }}</td>
+            <td style="padding: 6px 0; line-height: 1.4; color: #0f172a;">{{ validationColumns }}</td>
+          </tr>
+        </table>
+        
+        <p style="margin: 0; color: #64748b; font-size: 12px; line-height: 1.5;">
+          {{ 'sales.confirmImportText' | translate }}
+        </p>
+      </div>
+    </div>
+    
+    <div class="modal-footer">
+      <button class="btn-cancel" (click)="cancelConfirmModal()">{{ 'common.cancel' | translate }}</button>
+      <button class="btn-import-submit" (click)="confirmAndExecuteImport()">{{ 'sales.importRetrain' | translate }}</button>
+    </div>
+  </div>
+</div>
+
+<!-- 6. Validation Error Modal -->
+<div class="modal-backdrop" *ngIf="isValidationErrorModalOpen" style="display: flex !important; z-index: 100000 !important; opacity: 1 !important; visibility: visible !important;">
+  <div class="analysis-modal import-modal">
+    <!-- Modal Header -->
+    <div class="modal-header">
+      <h2 class="modal-title" style="color: #b91c1c;">{{ 'sales.validationFailed' | translate }}</h2>
+      <button class="btn-close-modal" (click)="closeValidationErrorModal()">&times;</button>
+    </div>
+    
+    <!-- Modal Body -->
+    <div class="modal-body-content">
+      <div class="modal-section-card" style="padding: 20px;">
+        <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px;">
+          <span class="status-indicator error" style="background: #fee2e2; color: #991b1b; padding: 6px 12px; border-radius: 20px; font-size: 11px; font-weight: 700;">{{ 'sales.error' | translate }}</span>
+          <h3 style="margin: 0; font-size: 15px; color: #0f172a; font-weight: 600;">{{ 'sales.columnCheckFailed' | translate }}</h3>
+        </div>
+        <p style="margin: 0; color: #334155; font-size: 13px; line-height: 1.5;">
+          {{ validationErrorMessage }}
+        </p>
+      </div>
+    </div>
+    
+    <!-- Modal Footer -->
+    <div class="modal-footer">
+      <button class="btn-close-footer" (click)="closeValidationErrorModal()">{{ 'common.close' | translate }}</button>
+    </div>
+  </div>
+</div>
+
+<!-- 7. Retraining Status Modal -->
+<div class="modal-backdrop" *ngIf="isRetrainStatusModalOpen" style="display: flex !important; z-index: 100000 !important; opacity: 1 !important; visibility: visible !important;">
+  <div class="analysis-modal import-modal" style="max-width: 400px; text-align: center;">
+    <!-- Modal Body -->
+    <div class="modal-body-content" style="padding: 30px;">
+      <div class="spinner-container" style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px;">
+        <i *ngIf="isImporting" class="fa-solid fa-circle-notch fa-spin" style="font-size: 40px; color: #3b82f6;"></i>
+        <i *ngIf="!isImporting" class="fa-solid fa-circle-check" style="font-size: 40px; color: #16a34a;"></i>
+        <h3 style="margin: 0; font-size: 16px; font-weight: 600; color: #0f172a;">
+          {{ isImporting ? ('sales.importing' | translate) : ('sales.importComplete' | translate) }}
+        </h3>
+        <p style="margin: 0; color: #64748b; font-size: 13px; line-height: 1.4;">
+          {{ isImporting ? ('sales.importingText' | translate) : ('sales.importCompleteText' | translate) }}
+        </p>
+      </div>
+    </div>
+    <div class="modal-footer" style="justify-content: center; border-top: none; padding-top: 0;">
+      <button class="btn-close-footer" style="min-width: 100px; padding: 8px 16px; background: #3b82f6; color: white; border: none; border-radius: 6px; font-weight: 600; cursor: pointer;" [disabled]="isImporting" (click)="closeRetrainStatusModal()">{{ 'common.close' | translate }}</button>
+    </div>
+  </div>
+</div>

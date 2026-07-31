@@ -173,6 +173,36 @@ def compute_dashboard_metrics(orders, products, previous_orders=None, *, zero_ba
     }
 
 
+@router.get("/version")
+async def get_kpis_version(db = Depends(get_db)):
+    try:
+        orders_count = await db["sales_orders"].count_documents({})
+        products_count = await db["products"].count_documents({})
+        anomalies_count = await db["anomalies"].count_documents({})
+        purchases_count = await db["purchases"].count_documents({})
+        clients_count = await db["client"].count_documents({})
+        
+        # Calculate total revenue sum fingerprint to catch order updates/deletions
+        pipeline = [{"$group": {"_id": None, "total": {"$sum": "$total_sales"}}}]
+        rev_res = await db["sales_orders"].aggregate(pipeline).to_list(1)
+        total_rev = round(rev_res[0]["total"], 2) if rev_res and "total" in rev_res[0] and rev_res[0]["total"] is not None else 0.0
+
+        version_hash = f"{orders_count}_{products_count}_{anomalies_count}_{purchases_count}_{clients_count}_{total_rev}"
+        return {
+            "version": version_hash,
+            "counts": {
+                "orders": orders_count,
+                "products": products_count,
+                "anomalies": anomalies_count,
+                "purchases": purchases_count,
+                "clients": clients_count,
+                "revenue": total_rev
+            }
+        }
+    except Exception as e:
+        return {"version": "1.0", "error": str(e)}
+
+
 @router.get("/anomalies", response_model=List[AnomalyRecordOut])
 async def list_anomalies(limit: int = 100, db = Depends(get_db), current_admin: dict = Depends(require_admin_role)):
     return [{**doc, "id": str(doc.pop("_id"))} async for doc in db["anomalies"].find().limit(limit)]

@@ -1,0 +1,257 @@
+
+<div *ngIf="auth.userState$ | async as user" class="supplier-dashboard">
+  <!-- 1. Executive AI Narrative Summary Card -->
+  <div *ngIf="user.role === 'supplier'" class="card narrative-card2" >
+    <div class="narrative-layout">
+      <div class="icon-container">
+        <div class="check-circle-icon">
+          <img src="/Robot%20-%20Modern%20cute%20chatbot.svg" alt="Robot - Modern cute chatbot icon" class="check-circle-img" />
+        </div>
+      </div>
+
+      <div class="narrative-content">
+        <h3 class="card-title">{{ 'products.aiTitle' | translate }}</h3>
+        <p class="narrative-text">
+          {{ aiSummary }}
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Non-supplier / manager view -->
+  <div *ngIf="user.role !== 'supplier'" class="card narrative-card" >
+    <div class="narrative-layout">
+      <div class="icon-container">
+        <div class="check-circle-icon">
+          <img src="/Robot%20-%20Modern%20cute%20chatbot.svg" alt="Robot - Modern cute chatbot icon" class="check-circle-img" />
+        </div>
+      </div>
+
+      <div class="narrative-content">
+        <h3 class="narrative-title">{{ 'products.aiTitleAdmin' | translate }}</h3>
+        <p class="narrative-text">
+          {{ aiSummary }}
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <!-- 2. Product Clustering Card -->
+  <div class="card clustering-card">
+    <div class="card-header">
+      <h3 class="card-title">{{ 'products.clusteringTitle' | translate }}</h3>
+      <span class="badge-kmeans">K-MEANS (K=3)</span>
+    </div>
+    
+    <div class="chart-container">
+      <canvas #clusteringChartCanvas></canvas>
+    </div>
+
+    <!-- Segmented Distribution Bar -->
+    <div class="legend-bar-container">
+      <div class="legend-bar-wrapper">
+        <div class="segmented-legend-bar">
+          <div class="segment segment-high-value" [style.width.%]="highValuePct"></div>
+          <div class="segment segment-volume-drivers" [style.width.%]="volumeDriversPct"></div>
+          <div class="segment segment-low-performers" [style.width.%]="lowPerformersPct"></div>
+        </div>
+        
+        <div class="legend-labels-row">
+          <div class="legend-item">
+            <span class="legend-dot dot-high-value"></span>
+            <span class="legend-text">HIGH VALUE ({{ highValuePct }}%)</span>
+          </div>
+          <div class="legend-item">
+            <span class="legend-dot dot-volume-drivers"></span>
+            <span class="legend-text">VOLUME DRIVERS ({{ volumeDriversPct }}%)</span>
+          </div>
+          <div class="legend-item">
+            <span class="legend-dot dot-low-performers"></span>
+            <span class="legend-text">LOW PERFORMERS ({{ lowPerformersPct }}%)</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 3. Products Table Card -->
+  <div class="card table-card">
+    <div class="table-header-row">
+      <div class="table-actions-left">
+        <button class="btn-icon" title="Settings"></button>
+        <input type="text" 
+               [(ngModel)]="tableSearchQuery" 
+               (input)="onTableSearchChange()" 
+               [placeholder]="'products.search' | translate"
+               class="search-input" />
+        <button *ngIf="user.role !== 'supplier'" class="btn-create-product" (click)="openCreateModal()">
+          + {{ 'products.createProduct' | translate }}
+        </button>
+      </div>
+      <div class="table-pagination-info">
+        <span>{{ getDisplayStartIndex() }} - {{ getDisplayEndIndex() }} of {{ filteredProductsTable.length }}</span>
+        <button (click)="prevPage()" [disabled]="currentPage === 1" class="btn-pagination" title="Previous Page">◀</button>
+        <button (click)="nextPage()" [disabled]="currentPage * pageSize >= filteredProductsTable.length" class="btn-pagination" title="Next Page">▶</button>
+      </div>
+    </div>
+
+    <div class="table-wrapper">
+      <table class="products-table">
+        <thead>
+          <tr>
+            <th>{{ 'products.image' | translate }}</th>
+            <th>{{ 'products.sku' | translate }}</th>
+            <th>{{ 'products.name' | translate }}</th>
+            <th>{{ 'products.category' | translate }}</th>
+            <th>{{ 'products.price' | translate }}</th>
+            <th>{{ 'products.discount' | translate }}</th>
+            <th>{{ 'products.currentStock' | translate }}</th>
+            <th>{{ 'products.monthlyVolume' | translate }}</th>
+            <th>{{ 'products.clusterTier' | translate }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let p of paginatedProducts" [class.product-row-highlight]="isHighlightedProduct(p)">
+            <td>
+              <img [src]="p.image" (error)="onMiniImageError($event, p.name)" class="mini-prod-img" alt="product thumbnail" />
+            </td>
+            <td class="bold-cell">#{{ p.sku }}</td>
+            <td style="font-weight: 500; color: #1e293b; white-space: normal;">{{ p.name }}</td>
+            <td>{{ p.category }}</td>
+            <td style="font-weight: 600;">${{ p.price | number:'1.2-2' }}</td>
+            <td>{{ (p.discount * 100) | number:'1.0-1' }}%</td>
+            <td>{{ 'products.units' | translate:{ count: p.current_stock } }}</td>
+            <td>{{ p.monthly_volume | number:'1.0-1' }}</td>
+            <td>
+              <span class="badge-cluster" 
+                    [class.high-value]="p.cluster === 'HIGH VALUE'"
+                    [class.volume-drivers]="p.cluster === 'VOLUME DRIVERS'"
+                    [class.low-performers]="p.cluster === 'LOW PERFORMERS'">
+                {{ p.cluster }}
+              </span>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Create Product Modal -->
+  <div class="modal-backdrop" *ngIf="showCreateModal" (click)="closeCreateModal()">
+    <div class="modal-content" (click)="$event.stopPropagation()">
+      <div class="modal-header">
+        <h3>{{ 'products.modal.createTitle' | translate }}</h3>
+        <button class="btn-close-modal" (click)="closeCreateModal()">×</button>
+      </div>
+
+      <form (ngSubmit)="onCreateProductSubmit()" #createForm="ngForm">
+        <div class="modal-body">
+          <!-- Error feedback -->
+          <div *ngIf="errorMessage" class="alert alert-danger">
+            {{ errorMessage }}
+          </div>
+
+          <div class="form-grid">
+            <div class="form-group">
+              <label for="sku">{{ 'products.modal.sku' | translate }} *</label>
+              <input type="number" id="sku" name="sku" [(ngModel)]="newProduct.sku" required class="form-control" placeholder="e.g. 1500" />
+            </div>
+
+            <div class="form-group">
+              <label for="name">{{ 'products.modal.name' | translate }} *</label>
+              <input type="text" id="name" name="name" [(ngModel)]="newProduct.name" required class="form-control" placeholder="e.g. Running Shoes" />
+            </div>
+
+            <div class="form-group autocomplete-container">
+              <label for="category">{{ 'products.modal.category' | translate }} *</label>
+              <input type="text" 
+                     id="category" 
+                     name="category" 
+                     [(ngModel)]="newProduct.category" 
+                     (focus)="showCategorySuggestions = true; filterCategories()"
+                     (blur)="hideSuggestionsLater('category')"
+                     (input)="filterCategories()"
+                     required 
+                     class="form-control" 
+                     [placeholder]="'products.modal.categoryPlaceholder' | translate" 
+                     autocomplete="off" />
+              <div class="suggestions-list" *ngIf="showCategorySuggestions && filteredCategories.length > 0">
+                <div class="suggestion-item" 
+                     *ngFor="let cat of filteredCategories" 
+                     (mousedown)="selectCategory(cat)">
+                  {{ cat }}
+                </div>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label>{{ 'products.modal.imageUpload' | translate }}</label>
+              <div class="image-upload-wrapper">
+                <input type="file" id="product_image" (change)="onImageSelected($event)" accept="image/*" class="file-input" style="display: none;" #fileInput />
+                <button type="button" class="btn-upload-image" (click)="fileInput.click()">
+                  Choose Image
+                </button>
+                <div class="image-preview" *ngIf="newProduct.image">
+                  <img [src]="newProduct.image" alt="Product preview" />
+                  <button type="button" class="btn-remove-image" (click)="newProduct.image = null">×</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="form-grid-row">
+              <div class="form-group">
+                <label for="price">{{ 'products.modal.price' | translate }} *</label>
+                <input type="number" step="0.01" id="price" name="price" [(ngModel)]="newProduct.price" required class="form-control" placeholder="0.00" />
+              </div>
+
+              <div class="form-group">
+                <label for="discount">{{ 'products.modal.discount' | translate }} *</label>
+                <input type="number" step="1" id="discount" name="discount" [(ngModel)]="newProduct.discountPercent" required class="form-control" placeholder="0" min="0" max="100" />
+              </div>
+            </div>
+
+            <div class="form-grid-row">
+              <div class="form-group">
+                <label for="current_stock">{{ 'products.modal.currentStock' | translate }} *</label>
+                <input type="number" id="current_stock" name="current_stock" [(ngModel)]="newProduct.current_stock" required class="form-control" placeholder="0" />
+              </div>
+
+              <div class="form-group autocomplete-container">
+                <label for="department">{{ 'products.modal.departmentId' | translate }} *</label>
+                <input type="text" 
+                       id="department" 
+                       name="department" 
+                       [(ngModel)]="departmentSearchText" 
+                       (focus)="showDeptSuggestions = true; filterDepartments()"
+                       (blur)="hideSuggestionsLater('dept')"
+                       (input)="filterDepartments()"
+                       required 
+                       class="form-control" 
+                       [placeholder]="'products.modal.departmentPlaceholder' | translate" 
+                       autocomplete="off" />
+                <div class="suggestions-list" *ngIf="showDeptSuggestions && filteredDepartments.length > 0">
+                  <div class="suggestion-item" 
+                       *ngFor="let dept of filteredDepartments" 
+                       (mousedown)="selectDepartment(dept)">
+                    {{ dept.name }}
+                  </div>
+                </div>
+                <input type="hidden" name="department_id" [(ngModel)]="newProduct.department_id" required />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn-cancel" (click)="closeCreateModal()">
+            {{ 'products.modal.cancelBtn' | translate }}
+          </button>
+          <button type="submit" [disabled]="!createForm.form.valid || isSubmitting" class="btn-submit">
+            <span *ngIf="!isSubmitting">{{ 'products.modal.saveBtn' | translate }}</span>
+            <span *ngIf="isSubmitting">Creating...</span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>

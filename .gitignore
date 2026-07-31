@@ -1,16 +1,21 @@
-# See https://docs.github.com/get-started/getting-started-with-git/ignoring-files for more about ignoring files.
-
-# Global / OS files
+# ==========================================
+# Global / OS & Temporary Files
+# ==========================================
 .DS_Store
 Thumbs.db
 *.log
 *.tmp
 *.temp
-*.pdf
-*.ipynb
-*.docx
-*.pptx
-# IDEs and editors
+*.bak
+*.swp
+*.dump
+dump_ppt.txt
+.history/
+.agents/
+.tempmediaStorage/
+.user_uploaded/
+
+# IDEs and Editors
 .vscode/
 .idea/
 .project
@@ -19,9 +24,41 @@ Thumbs.db
 *.launch
 .settings/
 *.sublime-workspace
-.history/
 
-# Frontend (Angular / Node)
+# ==========================================
+# Non-Code Documents & Presentation Artifacts
+# ==========================================
+*.pdf
+*.pptx
+*.docx
+*.xlsx
+*.csv
+!processed_data/.gitkeep
+presentation/
+output/
+outputs/
+report_pfa.tex
+REPort.tex
+humanized.tex
+create_onboarding_guide.py
+generate_presentation.py
+update_aiml_ppt.py
+build_clean_presentation.py
+build_full_combined_presentation.py
+generate_pfa_presentation.py
+render_class_diagram.py
+dump_ppt.txt
+
+# ==========================================
+# Model Binaries & Processed Datasets
+# ==========================================
+processed_data/*.pkl
+processed_data/*.csv
+*.pkl
+
+# ==========================================
+# Frontend (Angular 17 / Node.js)
+# ==========================================
 FrontEnd/node_modules/
 FrontEnd/dist/
 FrontEnd/.angular/
@@ -34,10 +71,11 @@ FrontEnd/yarn-error.log*
 FrontEnd/pnpm-debug.log*
 FrontEnd/.env
 FrontEnd/.env.*
+FrontEnd/.env.local
 
-/outputs/
-
+# ==========================================
 # Backend (Python / FastAPI)
+# ==========================================
 BackEnd/__pycache__/
 BackEnd/**/*.py[cod]
 BackEnd/.pytest_cache/
@@ -55,14 +93,8 @@ BackEnd/*.sqlite3
 BackEnd/*.db
 BackEnd/*.pyo
 BackEnd/*.pyd
-BackEnd/.python-version
-BackEnd/build/
-BackEnd/dist/
-BackEnd/*.egg-info/
-BackEnd/.eggs/
-BackEnd/pip-wheel-metadata/
 
-# General Python cache
+# General Python Caches & Virtual Environments
 __pycache__/
 *.py[cod]
 *$py.class
@@ -79,16 +111,3 @@ ENV/
 .env
 .env.*
 !.env.example
-
-# Build output
-/dist
-/tmp
-/out-tsc
-/bazel-out
-/.angular/cache
-/connect.lock
-/coverage
-/libpeerconnection.log
-testem.log
-/typings
-__screenshots__/

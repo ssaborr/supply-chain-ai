@@ -1,0 +1,344 @@
+<div class="dashboard-page-container">
+  <!-- MAIN DASHBOARD CONTENT (LEFT) -->
+  <div class="main-dashboard-content">
+    
+    <!-- 8 KPI Metrics Cards Row -->
+    <div class="kpi-grid">
+      <!-- 1. Global SC Health -->
+      <div class="kpi-card clickable-kpi" (click)="openKpiExplanationModal('globalHealth')" [title]="'dashboard.kpi.tooltip' | translate">
+        <div class="kpi-header">
+          <span class="kpi-title">{{ 'dashboard.kpi.globalHealth' | translate }}</span>
+          <div class="kpi-icon-wrapper health">
+            <i class="fa-solid fa-heart-pulse"></i>
+          </div>
+        </div>
+        <div class="kpi-body" *ngIf="!isLoadingKpis">
+          <h2 class="kpi-value">{{ kpis.globalHealth.value }}</h2>
+          <span [class]="kpis.globalHealth.change === 'Stable' ? 'kpi-badge stable' : (kpis.globalHealth.positive ? 'kpi-badge positive' : 'kpi-badge negative')">{{ kpis.globalHealth.change }}</span>
+        </div>
+        <div class="kpi-body-loading" *ngIf="isLoadingKpis">
+          <div class="kpi-skeleton-value"></div>
+          <div class="kpi-skeleton-badge"></div>
+        </div>
+      </div>
+
+      <!-- 2. Service Level (OTIF) -->
+      <div class="kpi-card clickable-kpi" (click)="openKpiExplanationModal('otifServiceLevel')" [title]="'dashboard.kpi.tooltip' | translate">
+        <div class="kpi-header">
+          <span class="kpi-title">{{ 'dashboard.kpi.otif' | translate }}</span>
+          <div class="kpi-icon-wrapper service">
+            <i class="fa-solid fa-circle-check"></i>
+          </div>
+        </div>
+        <div class="kpi-body" *ngIf="!isLoadingKpis">
+          <h2 class="kpi-value">{{ kpis.otifServiceLevel.value }}</h2>
+          <span [class]="kpis.otifServiceLevel.change === 'Stable' ? 'kpi-badge stable' : (kpis.otifServiceLevel.positive ? 'kpi-badge positive' : 'kpi-badge negative')">{{ kpis.otifServiceLevel.change }}</span>
+        </div>
+        <div class="kpi-body-loading" *ngIf="isLoadingKpis">
+          <div class="kpi-skeleton-value"></div>
+          <div class="kpi-skeleton-badge"></div>
+        </div>
+      </div>
+
+      <!-- 3. Active Stockout Rate -->
+      <div class="kpi-card clickable-kpi" (click)="openKpiExplanationModal('activeStockoutRate')" [title]="'dashboard.kpi.tooltip' | translate">
+        <div class="kpi-header">
+          <span class="kpi-title">{{ 'dashboard.kpi.stockout' | translate }}</span>
+          <div class="kpi-icon-wrapper stockout">
+            <i class="fa-solid fa-triangle-exclamation"></i>
+          </div>
+        </div>
+        <div class="kpi-body" *ngIf="!isLoadingKpis">
+          <h2 class="kpi-value">{{ kpis.activeStockoutRate.value }}</h2>
+          <span [class]="kpis.activeStockoutRate.change === 'Stable' ? 'kpi-badge stable' : (kpis.activeStockoutRate.positive ? 'kpi-badge positive' : 'kpi-badge negative')">{{ kpis.activeStockoutRate.change }}</span>
+        </div>
+        <div class="kpi-body-loading" *ngIf="isLoadingKpis">
+          <div class="kpi-skeleton-value"></div>
+          <div class="kpi-skeleton-badge"></div>
+        </div>
+      </div>
+
+      <!-- 4. Avg Delivery Lead Time -->
+      <div class="kpi-card clickable-kpi" (click)="openKpiExplanationModal('avgLeadTime')" [title]="'dashboard.kpi.tooltip' | translate">
+        <div class="kpi-header">
+          <span class="kpi-title">{{ 'dashboard.kpi.leadTime' | translate }}</span>
+          <div class="kpi-icon-wrapper lead-time">
+            <i class="fa-solid fa-clock"></i>
+          </div>
+        </div>
+        <div class="kpi-body" *ngIf="!isLoadingKpis">
+          <h2 class="kpi-value">{{ kpis.avgLeadTime.value }}</h2>
+          <span [class]="kpis.avgLeadTime.change === 'Stable' ? 'kpi-badge stable' : (kpis.avgLeadTime.positive ? 'kpi-badge positive' : 'kpi-badge negative')">{{ kpis.avgLeadTime.change }}</span>
+        </div>
+        <div class="kpi-body-loading" *ngIf="isLoadingKpis">
+          <div class="kpi-skeleton-value"></div>
+          <div class="kpi-skeleton-badge"></div>
+        </div>
+      </div>
+
+      <!-- 5. Total sales -->
+      <div class="kpi-card clickable-kpi" (click)="openKpiExplanationModal('totalRevenue')" [title]="'dashboard.kpi.tooltip' | translate">
+        <div class="kpi-header">
+          <span class="kpi-title">{{ 'dashboard.kpi.revenue' | translate }}</span>
+          <div class="kpi-icon-wrapper revenue">
+            <i style="padding-left: 5px !important;" class="fa-solid fa-dollar-sign"></i>
+          </div>
+        </div>
+        <div class="kpi-body" *ngIf="!isLoadingKpis">
+          <h2 class="kpi-value">{{ kpis.totalRevenue.value }}</h2>
+        </div>
+        <div class="kpi-body-loading" *ngIf="isLoadingKpis">
+          <div class="kpi-skeleton-value"></div>
+          <div class="kpi-skeleton-badge"></div>
+        </div>
+      </div>
+
+      <!-- 6. Total Orders -->
+      <div class="kpi-card clickable-kpi" (click)="openKpiExplanationModal('totalOrders')" [title]="'dashboard.kpi.tooltip' | translate">
+        <div class="kpi-header">
+          <span class="kpi-title">{{ 'dashboard.kpi.orders' | translate }}</span>
+          <div class="kpi-icon-wrapper orders">
+            <i class="fa-solid fa-cart-shopping"></i>
+          </div>
+        </div>
+        <div class="kpi-body" *ngIf="!isLoadingKpis">
+          <h2 class="kpi-value">{{ kpis.totalOrders.value }}</h2>
+          <span [class]="kpis.totalOrders.change === 'Stable' ? 'kpi-badge stable' : (kpis.totalOrders.positive ? 'kpi-badge positive' : 'kpi-badge negative')">{{ kpis.totalOrders.change }}</span>
+        </div>
+        <div class="kpi-body-loading" *ngIf="isLoadingKpis">
+          <div class="kpi-skeleton-value"></div>
+          <div class="kpi-skeleton-badge"></div>
+        </div>
+      </div>
+
+      <!-- 7. Active Products -->
+      <div class="kpi-card clickable-kpi" (click)="openKpiExplanationModal('activeProducts')" [title]="'dashboard.kpi.tooltip' | translate">
+        <div class="kpi-header">
+          <span class="kpi-title">{{ 'dashboard.kpi.products' | translate }}</span>
+          <div class="kpi-icon-wrapper products">
+            <i class="fa-solid fa-box"></i>
+          </div>
+        </div>
+        <div class="kpi-body" *ngIf="!isLoadingKpis">
+          <h2 class="kpi-value">{{ kpis.activeProducts.value }}</h2>
+          <span [class]="kpis.activeProducts.change === 'Stable' ? 'kpi-badge stable' : (kpis.activeProducts.positive ? 'kpi-badge positive' : 'kpi-badge negative')">{{ kpis.activeProducts.change }}</span>
+        </div>
+        <div class="kpi-body-loading" *ngIf="isLoadingKpis">
+          <div class="kpi-skeleton-value"></div>
+          <div class="kpi-skeleton-badge"></div>
+        </div>
+      </div>
+
+      <div class="kpi-card clickable-kpi" (click)="openKpiExplanationModal('totalCustomers')" [title]="'dashboard.kpi.tooltip' | translate">
+        <div class="kpi-header">
+          <span class="kpi-title">{{ 'dashboard.kpi.customers' | translate }}</span>
+          <div class="kpi-icon-wrapper customers">
+            <i style="padding-right: 3px !important;" class="fa-solid fa-users"></i>
+          </div>
+        </div>
+        <div class="kpi-body" *ngIf="!isLoadingKpis">
+          <h2 class="kpi-value">{{ kpis.totalCustomers.value }}</h2>
+          <span [class]="kpis.totalCustomers.change === 'Stable' ? 'kpi-badge stable' : (kpis.totalCustomers.positive ? 'kpi-badge positive' : 'kpi-badge negative')">{{ kpis.totalCustomers.change }}</span>
+        </div>
+        <div class="kpi-body-loading" *ngIf="isLoadingKpis">
+          <div class="kpi-skeleton-value"></div>
+          <div class="kpi-skeleton-badge"></div>
+        </div>
+      </div>
+    </div>
+
+
+    <div class="narrative-card">
+      <div class="icon-container">
+        <div class="check-circle-icon">
+          <img src="/Robot%20-%20Modern%20cute%20chatbot.svg" alt="Robot - Modern cute chatbot icon" class="check-circle-img" />
+        </div>
+      </div>
+      <div class="narrative-content">
+        <h3 class="narrative-title">{{ 'dashboard.aiTitle' | translate }}</h3>
+        <p class="narrative-text">
+          {{ aiNarrative }}
+        </p>
+      </div>
+    </div>
+
+    <div class="chart-full-card">
+      <div class="chart-card-header">
+        <div>
+          <h3>{{ 'dashboard.forecastTitle' | translate }}</h3>
+          <p class="chart-subtitle">{{ 'dashboard.forecastSubtitle' | translate }}</p>
+        </div>
+        <div class="chart-legend-indicator">
+          <span class="dot actual"></span> {{ 'common.actual' | translate }}
+          <span class="dot forecast"></span> {{ 'common.forecast' | translate }}
+        </div>
+      </div>
+      <div class="chart-canvas-container large">
+        <div class="chart-loader" *ngIf="isLoadingForecast">
+          <div class="chart-spinner"></div>
+        </div>
+        <canvas #forecastChartCanvas></canvas>
+      </div>
+    </div>
+
+    <!-- Chart 2: Customer RFM Segmentation -->
+    <div class="chart-full-card">
+      <div class="chart-card-header">
+        <div>
+          <h3>{{ 'dashboard.rfmTitle' | translate }}</h3>
+          <p class="chart-subtitle">K-Means Cluster Analysis — X: Recency (days), Y: Monetary spend ($), Dot size: Frequency</p>
+        </div>
+        <div class="chart-legend-indicator">
+          <span class="badge champions">CHAMPIONS</span>
+          <span class="badge loyal">LOYAL</span>
+          <span class="badge at-risk">AT RISK</span>
+        </div>
+      </div>
+      <div class="chart-canvas-container large">
+        <div class="chart-loader" *ngIf="isLoadingRFM">
+          <div class="chart-spinner"></div>
+        </div>
+        <canvas #rfmChartCanvas></canvas>
+      </div>
+    </div>
+
+    <!-- Bottom Widgets Grid (Top Products + Anomaly Distribution + Product clusters) -->
+    <div class="bottom-widgets-grid">
+      <!-- 1. Top Selling Products List -->
+      <div class="bottom-card">
+        <div class="bottom-card-header">
+          <h3>{{ 'dashboard.topProducts' | translate }}</h3>
+          <a routerLink="/products" class="view-link">View All Inventory →</a>
+        </div>
+        <div class="products-list-wrapper">
+          <div class="product-item" *ngFor="let p of topProducts">
+            <img [src]="p.image" class="prod-thumbnail" alt="thumbnail" />
+            <div class="prod-details">
+              <h4 class="prod-name">{{ p.name }}</h4>
+              <span class="prod-sales">{{ p.sales }}</span>
+            </div>
+            <div class="prod-stats">
+              <span class="prod-price">{{ p.price }}</span>
+              <span class="prod-change" [class.up]="p.isPositive" [class.down]="!p.isPositive">{{ p.change }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 2. Anomaly Distribution (LightGBM Classifier) -->
+      <div class="bottom-card">
+        <div class="bottom-card-header">
+          <h3>{{ 'dashboard.unusualOrders' | translate }}</h3>
+          <span class="badge-tag">LIGHTGBM CLASSIFIER</span>
+        </div>
+        <div class="chart-canvas-container small">
+          <div class="chart-loader" *ngIf="isLoadingAnomalies">
+            <div class="chart-spinner"></div>
+          </div>
+          <canvas #anomalyChartCanvas></canvas>
+        </div>
+      </div>
+
+      <!-- 3. Revenue vs. Discount Depth -->
+      <div class="bottom-card">
+        <div class="bottom-card-header">
+          <div>
+            <h3>{{ 'dashboard.discountTitle' | translate }}</h3>
+            <p class="chart-subtitle">{{ 'dashboard.discountSubtitle' | translate }}</p>
+          </div>
+        </div>
+        <div class="chart-canvas-container small">
+          <div class="chart-loader" *ngIf="isLoadingProducts">
+            <div class="chart-spinner"></div>
+          </div>
+          <canvas #productsChartCanvas></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- RIGHT SIDEBAR: AI ALERT FEED -->
+  <aside class="ai-alert-feed-sidebar">
+    <div class="sidebar-header">
+      <div class="alert-title-row">
+        <div class="alert-icon-circle">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+          </svg>
+        </div>
+        <div>
+          <h3 class="feed-title">{{ 'dashboard.aiFeed' | translate }}</h3>
+          <span class="feed-subtitle">{{ 'dashboard.feedSubtitle' | translate }}</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Alert Cards List -->
+    <div class="alerts-list">
+      <div class="alert-card" [class]="alert.type" *ngFor="let alert of alerts">
+        <div class="alert-card-header">
+          <span class="alert-badge" [class]="alert.type">{{ alert.type.toUpperCase() }}</span>
+
+        </div>
+        
+        <h4 class="alert-card-title">{{ alert.title }}</h4>
+        <span class="alert-card-subtitle">{{ alert.subtitle }}</span>
+        
+        <p class="alert-advice">{{ alert.advice }}</p>
+
+        <div class="alert-actions">
+          <button class="btn-alert-action" [class]="alert.type" (click)="navigateToTab(alert.tabRoute)">
+            {{ alert.actionLabel }}
+          </button>
+          
+          <a class="tab-link" (click)="navigateToTab(alert.tabRoute)">
+            Go to Tab →
+          </a>
+        </div>
+      </div>
+
+      <div class="empty-alerts" *ngIf="alerts.length === 0">
+        <div class="empty-spinner"></div>
+        <p>{{ 'dashboard.emptyFeed' | translate }}</p>
+      </div>
+    </div>
+  </aside>
+</div>
+
+<!-- KPI EXPLANATION MODAL -->
+<div class="kpi-modal-backdrop" *ngIf="activeKpiModal" (click)="closeKpiModal()">
+  <div class="kpi-modal-card" (click)="$event.stopPropagation()">
+    <div class="kpi-modal-header">
+      <h3 class="kpi-modal-title">{{ activeKpiModal.title }}</h3>
+      <button class="btn-close-modal" (click)="closeKpiModal()">&times;</button>
+    </div>
+    <div class="kpi-modal-body">
+      <div class="kpi-modal-value-row">
+        <span class="value-label">{{ 'dashboard.kpi.currentValue' | translate }}</span>
+        <span class="value-number">{{ activeKpiModal.value }}</span>
+      </div>
+      
+      <div class="kpi-modal-section">
+        <h4>{{ 'dashboard.kpi.definition' | translate }}</h4>
+        <p>{{ activeKpiModal.description }}</p>
+      </div>
+
+      <div class="kpi-modal-section">
+        <h4>{{ 'dashboard.kpi.formula' | translate }}</h4>
+        <div >
+          <code>{{ activeKpiModal.formula }}</code>
+        </div>
+      </div>
+
+      <div class="kpi-modal-section">
+        <h4>{{ 'dashboard.kpi.calculated' | translate }}</h4>
+        <p>{{ activeKpiModal.calculation }}</p>
+      </div>
+
+      <div class="kpi-modal-section">
+        <h4>{{ 'dashboard.kpi.target' | translate }}</h4>
+        <span class="target-badge">{{ activeKpiModal.target }}</span>
+      </div>
+    </div>
+  </div>
+</div>

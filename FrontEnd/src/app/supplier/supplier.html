@@ -1,0 +1,192 @@
+<div class="supplier-dashboard-page">
+  <!-- Top Title / Selector Bar -->
+  <div class="dashboard-header">
+    <div class="header-titles">
+      <h1>{{ 'supplier.title' | translate }}</h1>
+      <p class="header-subtitle">
+        {{ 'supplier.subtitle' | translate }}
+        <span class="highlight-company">{{ selectedSupplier }}</span>
+      </p>
+    </div>
+
+    <!-- Supplier Selector for Admins -->
+    <div class="supplier-selector-wrapper" *ngIf="isAdmin">
+      <label for="supplierSelect" class="selector-label">{{ 'supplier.viewPartner' | translate }}</label>
+      <select id="supplierSelect" [(ngModel)]="selectedSupplier" (change)="loadDashboardData()" class="supplier-select-input">
+        <option *ngFor="let name of suppliersList" [value]="name">{{ name }}</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- Loading State Spinner -->
+  <div class="loader-overlay" *ngIf="isLoading">
+    <div class="spinner"></div>
+    <p>{{ 'supplier.loading' | translate }}</p>
+  </div>
+
+  <!-- Main Content Grid when loaded -->
+  <div class="dashboard-content" *ngIf="!isLoading && kpis">
+    
+    <!-- AI Executive Narrative Card -->
+    <div class="narrative-card">
+      <div class="icon-container">
+        <div class="check-circle-icon">
+          <img src="/Robot%20-%20Modern%20cute%20chatbot.svg" alt="Robot - Modern cute chatbot icon" class="check-circle-img" />
+        </div>
+      </div>
+      <div class="narrative-content">
+        <h3 class="narrative-title">{{ 'supplier.aiTitle' | translate }}</h3>
+        <p class="narrative-text">{{ aiExplanation }}</p>
+      </div>
+    </div>
+
+    <!-- KPIs Metric Grid -->
+    <div class="kpis-grid">
+      <!-- KPI 1: OTIF -->
+      <div class="kpi-card glass-panel">
+        <div class="kpi-icon-row">
+          <span class="kpi-title">{{ 'supplier.kpi.otif' | translate }}</span>
+          <div class="kpi-icon-box bg-teal">
+            <i class="kpi-icon fa-solid fa-circle-check"></i>
+          </div>
+        </div>
+        <div class="kpi-val">{{ kpis.otif_rate }}%</div>
+        <div class="kpi-meta text-teal">{{ 'supplier.kpi.otifMeta' | translate:{ onTime: kpis.on_time_purchase_lines, total: kpis.total_purchase_lines } }}</div>
+      </div>
+
+      <!-- KPI 2: Avg Lead Time -->
+      <div class="kpi-card glass-panel">
+        <div class="kpi-icon-row">
+          <span class="kpi-title">{{ 'supplier.kpi.leadTime' | translate }}</span>
+          <div class="kpi-icon-box bg-indigo">
+            <i class="kpi-icon fa-solid fa-clock"></i>
+          </div>
+        </div>
+        <div class="kpi-val">{{ kpis.avg_lead_time }}d</div>
+        <div class="kpi-meta text-indigo">{{ 'supplier.kpi.leadTimeMeta' | translate }}</div>
+      </div>
+
+      <!-- KPI 3: Total Supplied Value -->
+      <div class="kpi-card glass-panel">
+        <div class="kpi-icon-row">
+          <span class="kpi-title">{{ 'supplier.kpi.spend' | translate }}</span>
+          <div class="kpi-icon-box bg-blue">
+            <i class="kpi-icon fa-solid fa-dollar-sign"></i>
+          </div>
+        </div>
+        <div class="kpi-val">${{ kpis.total_supply_cost | number:'1.2-2' }}</div>
+        <div class="kpi-meta text-blue">{{ 'supplier.kpi.spendMeta' | translate:{ units: kpis.total_volume_supplied } }}</div>
+      </div>
+
+      <!-- KPI 4: Active Sales Orders -->
+      <div class="kpi-card glass-panel">
+        <div class="kpi-icon-row">
+          <span class="kpi-title">{{ 'supplier.kpi.downstreamOrders' | translate }}</span>
+          <div class="kpi-icon-box bg-purple">
+            <i class="kpi-icon fa-solid fa-file-lines"></i>
+          </div>
+        </div>
+        <div class="kpi-val">{{ kpis.sales_orders_count }}</div>
+        <div class="kpi-meta text-purple">{{ 'supplier.kpi.productsTracked' | translate:{ count: (kpis.supplier_products_count || products.length) } }}</div>
+      </div>
+    </div>
+
+    <!-- Visual Charts & Inventory Alerts Grid -->
+    <div class="charts-inventory-row">
+      <!-- Left Column: Visual Analytics -->
+      <div class="charts-container glass-panel">
+        <div class="chart-section">
+          <h3>{{ 'supplier.chart.stockLevels' | translate }}</h3>
+          <div class="chart-wrapper">
+            <canvas #stockChartCanvas></canvas>
+          </div>
+        </div>
+
+        <div class="chart-section">
+          <h3>{{ 'supplier.chart.delayDistribution' | translate }}</h3>
+          <div class="chart-wrapper">
+            <canvas #leadTimeChartCanvas></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right Column: Low Stock Alerts Sidebar -->
+    </div>
+  
+
+
+  
+
+    <!-- Related Sales Orders Table Title (Outside) -->
+    <div class="section-title-block" style="margin-top: 32px; margin-bottom: 16px;">
+      <h2 style="margin: 0; font-size: 18px; font-weight: 800; color: #0f172a;">{{ 'supplier.orders.title' | translate }}</h2>
+      <p style="margin: 4px 0 0 0; font-size: 13px; color: #64748b;">{{ 'supplier.orders.subtitle' | translate }}</p>
+    </div>
+
+    <!-- Related Sales Orders Table -->
+    <div class="table-card">
+      <div class="table-header-row">
+        <div class="table-actions-left">
+          <input type="text" 
+                 [(ngModel)]="searchOrderQuery" 
+                 (input)="filterOrders()" 
+                 [placeholder]="'supplier.orders.search' | translate"
+                 class="search-input" />
+          
+          <select [(ngModel)]="statusFilter" (change)="filterOrders()" class="status-select-filter">
+            <option value="ALL">{{ 'supplier.orders.allStatuses' | translate }}</option>
+            <option value="VALID">{{ 'supplier.orders.valid' | translate }}</option>
+            <option value="DELAY ANOMALY">{{ 'supplier.orders.delayAnomaly' | translate }}</option>
+            <option value="UNUSUAL">{{ 'supplier.orders.unusual' | translate }}</option>
+          </select>
+        </div>
+
+        <div class="table-pagination-info" *ngIf="totalPages() > 0">
+          <span>{{ 'supplier.orders.pageInfo' | translate:{ page: currentPage, pages: totalPages(), total: totalOrdersCount } }}</span>
+          <button (click)="prevPage()" [disabled]="currentPage === 1" class="btn-pagination" title="Previous Page">◀</button>
+          <button (click)="nextPage()" [disabled]="currentPage === totalPages()" class="btn-pagination" title="Next Page">▶</button>
+        </div>
+      </div>
+
+      <!-- Orders Table -->
+      <div class="orders-table-wrapper">
+        <table class="orders-table">
+          <thead>
+            <tr>
+              <th>{{ 'supplier.orders.id' | translate }}</th>
+              <th>{{ 'supplier.orders.date' | translate }}</th>
+              <th>{{ 'supplier.orders.items' | translate }}</th>
+              <th>{{ 'supplier.orders.profitMargin' | translate }}</th>
+              <th>{{ 'supplier.orders.leadDelay' | translate }}</th>
+              <th>{{ 'supplier.orders.anomalyStatus' | translate }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngIf="paginatedOrders.length === 0">
+              <td colspan="6" class="no-records-cell">{{ 'supplier.orders.noRecords' | translate }}</td>
+            </tr>
+            <tr *ngFor="let order of paginatedOrders">
+              <td class="font-mono font-bold">SO#{{ order.id }}</td>
+              <td>{{ formatDateString(order.order_date) }}</td>
+              <td>{{ 'supplier.orders.units' | translate:{ count: order.total_quantity } }}</td>
+              <td>{{ (order.profit_margin * 100) | number:'1.1-1' }}%</td>
+              <td>
+                <span [class.text-red]="order.delay_delta > 3" [class.text-green]="order.delay_delta <= 0">
+                  {{ order.delay_delta > 0 ? ('supplier.orders.daysLate' | translate:{ days: order.delay_delta }) : ('supplier.orders.onTime' | translate) }}
+                </span>
+              </td>
+              <td>
+                <span class="status-badge" 
+                      [class.badge-valid]="order.anomaly_status === 'valid'" 
+                      [class.badge-delay]="order.anomaly_status === 'delay anomaly'"
+                      [class.badge-unusual]="order.anomaly_status === 'unusual'">
+                  {{ order.anomaly_status | uppercase }}
+                </span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>

@@ -169,7 +169,10 @@ async def query_chatbot(request: ChatRequest, language: str = "en", db = Depends
                     gen_resp = await client.post("http://localhost:11434/api/generate", json={
                         "model": model_name,
                         "prompt": prompt,
-                        "stream": False
+                        "stream": False,
+                        "options": {
+                            "num_ctx": 8192
+                        }
                     })
                     if gen_resp.status_code == 200:
                         email_text = gen_resp.json().get("response", "").strip()
@@ -372,6 +375,8 @@ async def query_chatbot(request: ChatRequest, language: str = "en", db = Depends
                 })
             else:
                 order_data = await db["sales_orders"].find_one({"id": order_id})
+                if not order_data:
+                    order_data = await db["sales_orders"].find_one({"id": str(order_id)})
                 
             if order_data:
                 order_data.pop("_id", None)
@@ -382,6 +387,48 @@ async def query_chatbot(request: ChatRequest, language: str = "en", db = Depends
                 for a in anoms:
                     a.pop("_id", None)
                 pre_context["anomalies_for_order"] = anoms
+
+                # Extract product SKUs in this sales order
+                order_skus = []
+                for line in order_data.get("order_lines", []):
+                    sku = line.get("product_sku")
+                    if sku is not None:
+                        try:
+                            order_skus.append(int(sku))
+                        except (ValueError, TypeError):
+                            order_skus.append(sku)
+                
+                if order_skus:
+                    # Fetch linked products
+                    prods_cursor = db["products"].find({"sku": {"$in": order_skus}})
+                    prods = []
+                    async for p in prods_cursor:
+                        p.pop("_id", None)
+                        prods.append({"sku": p.get("sku"), "name": p.get("name"), "category": p.get("category"), "price": p.get("price")})
+                    pre_context["linked_products"] = prods
+
+                    # Fetch linked purchases and suppliers
+                    purch_cursor = db["purchases"].find({
+                        "$or": [
+                            {"purchase_lines.product_sku": {"$in": order_skus}},
+                            {"purchase_lines.product_sku": {"$in": [str(s) for s in order_skus]}}
+                        ]
+                    })
+                    linked_sups = set()
+                    linked_purch_list = []
+                    async for purch in purch_cursor:
+                        purch.pop("_id", None)
+                        sup = purch.get("Supplier")
+                        if sup:
+                            linked_sups.add(sup)
+                        linked_purch_list.append({
+                            "id": purch.get("id"),
+                            "Supplier": purch.get("Supplier"),
+                            "date": purch.get("date"),
+                            "purchase_lines": purch.get("purchase_lines", [])
+                        })
+                    pre_context["linked_suppliers"] = list(linked_sups)
+                    pre_context["linked_purchases"] = linked_purch_list
                 
         sku_match = re.search(r'\bsku\s*#?(\d+)\b', message_lower) or re.search(r'\bproduct\s*#?(\d+)\b', message_lower)
         if sku_match:
@@ -446,7 +493,7 @@ async def query_chatbot(request: ChatRequest, language: str = "en", db = Depends
             f"   - Notice: You only have access to products you supply.\n\n"
             f"HOW TO QUERY THE DATABASE (MCP TOOL CALLING):\n"
             f"If you need to query database collections, write a tool call in the following format:\n"
-            f"DB_QUERY: {{\"collection\": \"<collection_name>\", \"operation\": \"find_one\"|\"find_many\"|\"count\", \"filter\": <filter_dict>}}\n"
+            f"DB_QUERY: {{\"collection\": \"<collection_name>\", \"operation\": \"find_one\"|\"find_many\"|\"count\"|\"aggregate\", \"filter\": <filter_dict>, \"pipeline\": <pipeline_list>}}\n"
             f"Ensure any filter strictly restricts results to your supplier scope.\n"
             f"If the user asks for client details, other suppliers, or general KPIs, refuse to answer politely.\n\n"
             f"FINAL ANSWER INSTRUCTIONS:\n"
@@ -459,7 +506,7 @@ async def query_chatbot(request: ChatRequest, language: str = "en", db = Depends
             "You have direct connection tools to query MongoDB to answer user questions.\n\n"
             "DATABASE SCHEMA & COLLECTIONS:\n"
             "1. **sales_orders**:\n"
-            "   - Fields: 'id' (int), 'client_id' (str), 'order_date' (str), 'status' (str, e.g., 'CLOSED', 'SUSPECTED_FRAUD'), 'order_profit' (float), 'scheduled_shipment' (int), 'real_shipment' (int), 'order_lines' (list of {'quantity': int, 'unitPrice': float, 'product_sku': int})\n"
+            "   - Fields: 'id' (int), 'client_id' (str), 'order_date' (str), 'status' (str, e.g., 'CLOSED', 'SUSPECTED_FRAUD'), 'order_profit' (float), 'scheduled_shipment' (int), 'real_shipment' (int), 'total_sales' (float), 'order_lines' (list of {'quantity': int, 'unitPrice': float, 'product_sku': int})\n"
             "2. **anomalies**:\n"
             "   - Fields: 'anomaly' (str, name of anomaly), 'score' (float), 'type' (str, 'fraud'|'delay'), 'timestamp' (str), 'description' (str), 'sales_order_id' (int)\n"
             "3. **products**:\n"
@@ -478,13 +525,18 @@ async def query_chatbot(request: ChatRequest, language: str = "en", db = Depends
             "   - Fields: 'date' (str), 'product_id' (int), 'sales' (float, optional), 'forecast' (float)\n"
             "10. **admin**:\n"
             "   - Fields: 'email' (str), 'first_name' (str), 'last_name' (str), 'role' (str), 'supplier_name' (str)\n\n"
+            "RELATIONAL MAPPING INSTRUCTIONS:\n"
+            "- Sales orders connect to products via 'order_lines.product_sku'.\n"
+            "- Suppliers connect to products via 'purchases.purchase_lines.product_sku'.\n"
+            "- To find the supplier for a sales order SO #X, inspect the product SKUs in SO #X and query 'purchases' matching those 'purchase_lines.product_sku'.\n\n"
             "HOW TO QUERY THE DATABASE (MCP TOOL CALLING):\n"
-            "If you do not have the database answers in the pre-retrieved data, you MUST write a tool call in the following format on a single line:\n"
-            "DB_QUERY: {\"collection\": \"<collection_name>\", \"operation\": \"find_one\"|\"find_many\"|\"count\", \"filter\": <filter_dict>}\n"
+            "If you do not have the database answers in the pre-retrieved data, write a tool call in the following format on a single line:\n"
+            "DB_QUERY: {\"collection\": \"<collection_name>\", \"operation\": \"find_one\"|\"find_many\"|\"count\"|\"aggregate\", \"filter\": <filter_dict>, \"pipeline\": <pipeline_list>}\n"
             "Do not write any other text when writing a DB_QUERY. Output ONLY the DB_QUERY line and stop.\n\n"
-            "Example:\n"
-            "User asks: 'anomalies for order 367'\n"
-            "You write: DB_QUERY: {\"collection\": \"anomalies\", \"operation\": \"find_many\", \"filter\": {\"sales_order_id\": 367}}\n\n"
+            "Examples:\n"
+            "- Find anomalies for order 367: DB_QUERY: {\"collection\": \"anomalies\", \"operation\": \"find_many\", \"filter\": {\"sales_order_id\": 367}}\n"
+            "- Find supplier for SKU 858: DB_QUERY: {\"collection\": \"purchases\", \"operation\": \"find_many\", \"filter\": {\"purchase_lines.product_sku\": 858}}\n"
+            "- Count sales orders per supplier: DB_QUERY: {\"collection\": \"purchases\", \"operation\": \"aggregate\", \"pipeline\": [{\" $group \": {\" _id \": \" $Supplier \", \" count \": {\" $sum \": 1}}}]}\n\n"
             "FINAL ANSWER INSTRUCTIONS:\n"
             "Once you have the database results (either pre-retrieved or after executing DB_QUERY), write a clean, conversational response to the user. "
             f"You MUST respond in {lang_name} at all times. Do not translate your response to {other_lang}, even if the user queries in {other_lang}.\n"
@@ -510,7 +562,10 @@ async def query_chatbot(request: ChatRequest, language: str = "en", db = Depends
             gen_resp = await client.post("http://localhost:11434/api/generate", json={
                 "model": model_name,
                 "prompt": prompt,
-                "stream": False
+                "stream": False,
+                "options": {
+                    "num_ctx": 8192
+                }
             })
             if gen_resp.status_code == 200:
                 llm_response = gen_resp.json().get("response", "").strip()
@@ -527,11 +582,12 @@ async def query_chatbot(request: ChatRequest, language: str = "en", db = Depends
             collection = query_obj.get("collection")
             operation = query_obj.get("operation", "find_one")
             db_filter = query_obj.get("filter", {})
+            pipeline = query_obj.get("pipeline", [])
             
             query_result = None
             
             # intercept raw SQL/NoSQL queries to block supplier data leaks
-            allowed_collections = ["sales_orders", "anomalies", "products"] if is_supplier else ["sales_orders", "anomalies", "products", "client", "kpis", "purchases"]
+            allowed_collections = ["sales_orders", "anomalies", "products"] if is_supplier else ["sales_orders", "anomalies", "products", "client", "kpis", "purchases", "departments", "insights"]
             
             if collection in allowed_collections:
                 if is_supplier:
@@ -542,13 +598,22 @@ async def query_chatbot(request: ChatRequest, language: str = "en", db = Depends
                     elif collection == "anomalies":
                         db_filter = {"$and": [db_filter, {"sales_order_id": {"$in": list(supplier_order_ids)}}]}
                 
+                # Make filter handles numeric string / int gracefully
+                for k, v in list(db_filter.items()):
+                    if isinstance(v, (int, str)) and k in ["id", "sku", "sales_order_id", "product_sku", "purchase_lines.product_sku", "order_lines.product_sku"]:
+                        try:
+                            num_val = int(v)
+                            db_filter[k] = {"$in": [num_val, str(num_val)]}
+                        except ValueError:
+                            pass
+
                 if operation == "find_one":
                     res = await db[collection].find_one(db_filter)
                     if res:
                         res.pop("_id", None)
                     query_result = res
                 elif operation in ["find_many", "find"]:
-                    cursor = db[collection].find(db_filter).limit(10)
+                    cursor = db[collection].find(db_filter).limit(15)
                     res_list = []
                     async for doc in cursor:
                         doc.pop("_id", None)
@@ -557,6 +622,16 @@ async def query_chatbot(request: ChatRequest, language: str = "en", db = Depends
                 elif operation == "count":
                     count = await db[collection].count_documents(db_filter)
                     query_result = {"count": count}
+                elif operation == "aggregate":
+                    if hasattr(db[collection], "aggregate") and callable(getattr(db[collection], "aggregate")):
+                        cursor = db[collection].aggregate(pipeline)
+                        res_list = []
+                        async for doc in cursor:
+                            doc.pop("_id", None)
+                            res_list.append(doc)
+                        query_result = res_list
+                    else:
+                        query_result = []
 
                 # feed DB results back to LLM for final answer
                 second_prompt = (
@@ -571,7 +646,10 @@ async def query_chatbot(request: ChatRequest, language: str = "en", db = Depends
                     gen_resp = await client.post("http://localhost:11434/api/generate", json={
                         "model": model_name,
                         "prompt": second_prompt,
-                        "stream": False
+                        "stream": False,
+                        "options": {
+                            "num_ctx": 8192
+                        }
                     })
                     if gen_resp.status_code == 200:
                         return {"response": gen_resp.json().get("response", "").strip()}
@@ -584,19 +662,56 @@ async def query_chatbot(request: ChatRequest, language: str = "en", db = Depends
     if llm_response and "DB_QUERY:" not in llm_response:
         return {"response": llm_response}
 
-    # offline mode: use RAG context directly if LLM failed
+
+
+    # fails and catches: if no LLM response or no DB query fall back
     stats = pre_context.get("stats", {})
     if order_id is not None:
         if "sales_orders" in pre_context:
             o = pre_context["sales_orders"]
             a = pre_context.get("anomalies_for_order", [])
             delay = o.get("real_shipment", 0) - o.get("scheduled_shipment", 0)
+            linked_sups = pre_context.get("linked_suppliers", [])
+            linked_prods = pre_context.get("linked_products", [])
+            
+            is_supplier_query = any(w in message_lower for w in ["supplier", "fournisseur", "vendor", "who", "qui", "linked", "lié", "sourcing", "provenance"])
+
+            if is_supplier_query:
+                if linked_sups:
+                    sups_str = ", ".join([f"**{s}**" for s in linked_sups])
+                    prods_desc = ", ".join([f"SKU #{p.get('sku')} ({p.get('name')})" for p in linked_prods]) if linked_prods else ""
+                    if language == "fr":
+                        return {
+                            "response": (
+                                f"La commande [SO #{order_id}](http://localhost:4200/sales-order?orderId={order_id}) créée le **{o.get('order_date')}** (Statut : **{o.get('status')}**, Ventes totales : **{o.get('total_sales', 0):,.2f} $**, Profit : **{o.get('order_profit', 0):,.2f} $**) "
+                                f"est liée aux fournisseurs suivants : {sups_str}."
+                                + (f"\n\nProduits inclus dans la commande : {prods_desc}" if prods_desc else "")
+                            )
+                        }
+                    else:
+                        return {
+                            "response": (
+                                f"Sales order [SO #{order_id}](http://localhost:4200/sales-order?orderId={order_id}) created on **{o.get('order_date')}** (Status: **{o.get('status')}**, Total Sales: **${o.get('total_sales', 0):,.2f}**, Profit: **${o.get('order_profit', 0):,.2f}**) "
+                                f"is linked to the following suppliers: {sups_str}."
+                                + (f"\n\nIncluded products: {prods_desc}" if prods_desc else "")
+                            )
+                        }
+                else:
+                    if language == "fr":
+                        return {
+                            "response": f"Aucun enregistrement d'achat ou fournisseur n'est directement lié aux SKUs de la commande [SO #{order_id}](http://localhost:4200/sales-order?orderId={order_id})."
+                        }
+                    else:
+                        return {
+                            "response": f"No purchase order or supplier records are currently linked to the product SKUs in sales order [SO #{order_id}](http://localhost:4200/sales-order?orderId={order_id})."
+                        }
+
             if a:
                 if language == "fr":
                     anoms_desc = "\n".join([f"• **{item['anomaly']}** : {item['description']} (Score : {item['score']})" for item in a])
                     return {
                         "response": (
-                            f"La commande [SO #{order_id}](http://localhost:4200/sales-order?orderId={order_id}) présente les anomalies suivantes dans la base de données :\n\n"
+                            f"La commande [SO #{order_id}](http://localhost:4200/sales-order?orderId={order_id}) créée le **{o.get('order_date')}** (Statut : **{o.get('status')}**, Ventes : **{o.get('total_sales', 0):,.2f} $**) présente les anomalies suivantes :\n\n"
                             f"{anoms_desc}\n\n"
                             f"Détails : Le profit est de **{o.get('order_profit', 0.0):.2f} $**, la durée réelle d'expédition était de **{o.get('real_shipment')} jours** (promis {o.get('scheduled_shipment')} jours)."
                         )
@@ -605,7 +720,7 @@ async def query_chatbot(request: ChatRequest, language: str = "en", db = Depends
                     anoms_desc = "\n".join([f"• **{item['anomaly']}**: {item['description']} (Score: {item['score']})" for item in a])
                     return {
                         "response": (
-                            f"Order [SO #{order_id}](http://localhost:4200/sales-order?orderId={order_id}) has the following anomalies flagged in the database:\n\n"
+                            f"Order [SO #{order_id}](http://localhost:4200/sales-order?orderId={order_id}) created on **{o.get('order_date')}** (Status: **{o.get('status')}**, Total Sales: **${o.get('total_sales', 0):,.2f}**) has the following anomalies flagged:\n\n"
                             f"{anoms_desc}\n\n"
                             f"Details: Profit is **${o.get('order_profit', 0.0):.2f}**, real shipping duration was **{o.get('real_shipment')} days** (promised {o.get('scheduled_shipment')} days)."
                         )
@@ -614,14 +729,14 @@ async def query_chatbot(request: ChatRequest, language: str = "en", db = Depends
                 if language == "fr":
                     return {
                         "response": (
-                            f"Pour la commande [SO #{order_id}](http://localhost:4200/sales-order?orderId={order_id}), aucune anomalie active n'est enregistrée dans la base de données. "
+                            f"Pour la commande [SO #{order_id}](http://localhost:4200/sales-order?orderId={order_id}) créée le **{o.get('order_date')}** (Statut : **{o.get('status')}**, Ventes : **{o.get('total_sales', 0):,.2f} $**), aucune anomalie active n'est enregistrée dans la base de données. "
                             f"Le profit de la commande est de **{o.get('order_profit', 0.0):.2f} $** et le délai d'expédition était de **{delay} jours**."
                         )
                     }
                 else:
                     return {
                         "response": (
-                            f"For [SO #{order_id}](http://localhost:4200/sales-order?orderId={order_id}), no active anomalies are registered in the database. "
+                            f"For [SO #{order_id}](http://localhost:4200/sales-order?orderId={order_id}) created on **{o.get('order_date')}** (Status: **{o.get('status')}**, Total Sales: **${o.get('total_sales', 0):,.2f}**), no active anomalies are registered in the database. "
                             f"The order profit margin is **${o.get('order_profit', 0.0):.2f}** and shipping delay was **{delay} days**."
                         )
                     }
@@ -629,6 +744,7 @@ async def query_chatbot(request: ChatRequest, language: str = "en", db = Depends
             return {
                 "response": f"J'ai interrogé la base de données pour la commande SO #{order_id}, mais aucun enregistrement correspondant n'a été trouvé." if language == "fr" else f"I queried the database for SO #{order_id}, but no matching order record was found."
             }
+
             
     elif "supplier_info" in pre_context:
         sup_info = pre_context["supplier_info"]

@@ -1,0 +1,171 @@
+@if (auth.userState$ | async; as user) {
+  <div class="app-layout">
+    <!-- Top Header Bar -->
+    <header class="top-header">
+      <div class="header-left">
+        <div class="brand">
+          <img src="logo.png" class="brand-logo-img" alt="Logo" />
+          <span class="brand-name">SC-AI Platform</span>
+        </div>
+      </div>
+
+      <div class="header-right">
+        <!-- Search bar -->
+        <div class="search-bar">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" class="search-icon" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="11" cy="11" r="8"/>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+          </svg>
+          <input 
+            type="text" 
+            [placeholder]="user.role === 'supplier' ? ('search.inventory' | translate) : ('search.orders' | translate)" 
+            (input)="onSearchInput($event)"
+            (blur)="closeDropdown()"
+            (focus)="onSearchInput($event)"
+          />
+          
+          @if (showDropdown()) {
+            <div class="search-results-dropdown">
+              @for (result of searchResults; track result.sku || result.id) {
+                <div class="search-result-item" (mousedown)="selectSearchResult(result)">
+                  <div class="search-result-header">
+                    @if (user.role === 'supplier') {
+                      <span class="search-result-title">{{ 'search.skuTitle' | translate:{ sku: result.sku } }}</span>
+                      <span class="search-result-status">{{ result.cluster || 'inventory' }}</span>
+                    } @else {
+                      <span class="search-result-title">{{ 'search.orderTitle' | translate:{ id: result.id } }}</span>
+                      <span class="search-result-status" [class]="result.anomaly_status || 'valid'">
+                        {{ result.anomaly_status || 'valid' }}
+                      </span>
+                    }
+                  </div>
+                  <div class="search-result-details">
+                    @if (user.role === 'supplier') {
+                      {{ 'search.productDetails' | translate:{ name: result.name, stock: result.current_stock, price: (result.price | number:'1.2-2') } }}
+                    } @else {
+                      {{ 'search.clientDetails' | translate:{ client: result.client_id, date: (result.order_date | displayDate), sales: (result.total_sales | number:'1.2-2') } }}
+                    }
+                  </div>
+                </div>
+              }
+            </div>
+          }
+        </div>
+
+
+        <div class="profile-card">
+          <div class="profile-details">
+            <p class="profile-name">{{ user.first_name }} {{ user.last_name }}</p>
+            <p class="profile-role">{{ user.role === 'supplier' ? ('profile.supplier' | translate) : ('profile.manager' | translate) }}</p>
+          </div>
+          <div class="profile-avatar">{{ user.first_name[0] }}{{ user.last_name[0] }}</div>
+          <button (click)="onLogout()" class="btn-logout" title="Sign Out">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" class="logout-icon" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <div class="app-body">
+      <!-- Sidebar Navigation -->
+      <aside class="sidebar">
+        <nav class="nav-links">
+          @if (user.role === 'supplier') {
+            <a routerLink="/supplier" routerLinkActive="active" class="nav-item">
+              <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/>
+              </svg>
+              <span>{{ 'nav.supplierDashboard' | translate }}</span>
+            </a>
+          }
+          @if (user.role !== 'supplier') {
+            @if (user.role === 'admin' || (user.allowed_tabs && user.allowed_tabs.includes('dashboard'))) {
+              <a routerLink="/dashboard" routerLinkActive="active" class="nav-item">
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+                </svg>
+                <span>{{ 'nav.dashboard' | translate }}</span>
+              </a>
+            }
+            @if (user.role === 'admin' || (user.allowed_tabs && user.allowed_tabs.includes('sales-order'))) {
+              <a routerLink="/sales-order" routerLinkActive="active" class="nav-item">
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/>
+                </svg>
+                <span>{{ 'nav.salesOrder' | translate }}</span>
+              </a>
+            }
+            @if (user.role === 'admin' || (user.allowed_tabs && user.allowed_tabs.includes('demand-forecast'))) {
+              <a routerLink="/demand-forecast" routerLinkActive="active" class="nav-item">
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/>
+                </svg>
+                <span>{{ 'nav.demandForecasting' | translate }}</span>
+              </a>
+            }
+            @if (user.role === 'admin' || (user.allowed_tabs && user.allowed_tabs.includes('segmentation'))) {
+              <a routerLink="/segmentation" routerLinkActive="active" class="nav-item">
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                </svg>
+                <span>{{ 'nav.partnerSegmentation' | translate }}</span>
+              </a>
+            }
+          }
+
+          @if (user.role === 'admin' || user.role === 'supplier' || (user.allowed_tabs && user.allowed_tabs.includes('products'))) {
+            <a routerLink="/products" routerLinkActive="active" class="nav-item">
+              <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/>
+              </svg>
+              <span>{{ 'nav.inventory' | translate }}</span>
+            </a>
+          }
+
+          @if (user.role !== 'supplier') {
+            @if (user.role === 'admin' || (user.allowed_tabs && user.allowed_tabs.includes('settings'))) {
+              <div class="sidebar-separator"></div>
+              <!-- -->
+              <a  routerLink="/settings" routerLinkActive="active" class="nav-item">
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+                </svg>
+                <span>{{ 'nav.systemSettings' | translate }}</span>
+              </a>
+            }
+          }
+          <div class="sidebar-separator"></div>
+          <button type="button" class="nav-item language-menu-btn" (click)="toggleLanguage()">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 0 20"/><path d="M12 2a15.3 15.3 0 0 0 0 20"/>
+            </svg>
+            <span>{{ 'language.toggle' | translate }}</span>
+            <span class="language-current">{{ 'language.current' | translate }}</span>
+          </button>
+        </nav>
+      </aside>
+
+      <!-- Main Content Area -->
+      <main class="main-content">
+        <div class="page-container">
+          <router-outlet />
+        </div>
+      </main>
+    </div>
+
+    <!-- Floating Chatbot Widget -->
+    <app-chatbot-widget></app-chatbot-widget>
+  </div>
+} @else if ((auth.userState$ | async) === null) {
+  <router-outlet />
+} @else {
+  <!-- Loading state during token validation on refresh/startup -->
+  <div class="auth-init-loader">
+    <div class="init-spinner"></div>
+    <p>{{ 'app.connecting' | translate }}</p>
+  </div>
+
+
+  }
