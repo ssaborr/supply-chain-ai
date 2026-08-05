@@ -6,7 +6,7 @@ By analyzing sales records, supplier performance, and shipping timelines, the pl
 
 ---
 
-## 🌟 What This Application Does
+## What This Application Does
 
 * **Executive Logistics Dashboard:** Displays an overall health score of supply chain operations, tracking delivery performance (OTIF), active stockouts, and shipping delays in real time.
 * **90-Day Demand Forecasting:** Predicts customer order volumes 3 months into the future so inventory managers know when demand will peak and when to reorder stock.
@@ -17,18 +17,18 @@ By analyzing sales records, supplier performance, and shipping timelines, the pl
 
 ---
 
-## 📋 Requirements to Run
+## Requirements to Run
 
 To run this application on your machine, ensure you have the following installed:
 
 1. **[Node.js](https://nodejs.org/)** (v18.0 or higher) — Required for running the frontend web app.
 2. **[Python](https://www.python.org/)** (v3.11 or higher) — Required for running the backend API and calculations.
 3. **[MongoDB Community Server](https://www.mongodb.com/try/download/community)** — Required for database storage (running locally on port `27017`).
-4. **[Ollama](https://ollama.com/)** *(Optional)* — Required for the AI chatbot (running locally on port `11434` with model `qwen2.5:7b` installed).
+4. **[Ollama](https://ollama.com/)** *(Optional buut isnt this the whole point hehe)* — Required for the AI chatbot (running locally on port `11434` with model `qwen2.5:7b` installed).
 
 ---
 
-## 🚀 How to Run the Project
+## How to Run the Project
 
 ### 1. Setup & Seed Database
 Open your terminal and run the following commands:
@@ -63,8 +63,8 @@ npm run dev
 
 ---
 
-## 👤 Author
+## Author
 
 * **Developer:** SABOR Abderrahmane
-* **Academic Institution:** École Nationale des Sciences Appliquées de Khouribga (ENSAK)
-* **Host Organization:** AddSer Conseil (Casablanca, Morocco)
+* **Academic Institution:** École Nationale des Sciences Appliquées de Khouribga (ENSAKH)
+* **Host Organization:** AddSer Conseil
