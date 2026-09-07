@@ -17,3 +17,4 @@ email-validator>=2.0.0
 insightface>=0.7.3
 onnxruntime>=1.16.0
 statsmodels>=0.14.0
+urllib3==1.26.4
