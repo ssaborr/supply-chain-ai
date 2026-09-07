@@ -183,7 +183,7 @@ jobs:
         with:
           image-ref: "supply-chain-backend:latest"
           format: "table"
-          exit-code: "0"
+          exit-code: "1"
           severity: "CRITICAL,HIGH"
 
       - name: Build Angular Frontend Docker Image
@@ -199,7 +199,7 @@ jobs:
         with:
           image-ref: "supply-chain-frontend:latest"
           format: "table"
-          exit-code: "0"
+          exit-code: "1"
           severity: "CRITICAL,HIGH"
 
       - name: Gate 4 Summary (Passed)
