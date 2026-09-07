@@ -30,14 +30,23 @@ jobs:
           rm -f gitleaks_8.24.0_linux_x64.tar.gz
           gitleaks detect --verbose --redact --gitleaks-ignore-path .gitleaksignore
 
-      - name: Gate 1 Summary
-        if: always()
+      - name: Gate 1 Summary (Passed)
+        if: success()
         run: |
           echo "### Gate 1: Secret Detection" >> $GITHUB_STEP_SUMMARY
           echo "| Check | Result | Tool |" >> $GITHUB_STEP_SUMMARY
           echo "| :--- | :--- | :--- |" >> $GITHUB_STEP_SUMMARY
           echo "| Commit History Secrets | Clean (0 Leaks) | Gitleaks |" >> $GITHUB_STEP_SUMMARY
           echo "| Baseline Exemption | Applied (.gitleaksignore) | Gitleaks |" >> $GITHUB_STEP_SUMMARY
+
+      - name: Gate 1 Summary (Failed)
+        if: failure()
+        run: |
+          echo "### Gate 1: Secret Detection" >> $GITHUB_STEP_SUMMARY
+          echo "| Check | Result | Tool |" >> $GITHUB_STEP_SUMMARY
+          echo "| :--- | :--- | :--- |" >> $GITHUB_STEP_SUMMARY
+          echo "| Commit History Secrets | FAILED (Secret Leak Detected) | Gitleaks |" >> $GITHUB_STEP_SUMMARY
+          echo "| Status | Build Terminated | Gitleaks |" >> $GITHUB_STEP_SUMMARY
 
   # Gate 2: SAST & SCA (Code & Dependency Vulnerability Scanning)
   sast-and-sca:
@@ -87,8 +96,8 @@ jobs:
         run: |
           npm audit --audit-level=critical
 
-      - name: Gate 2 Summary
-        if: always()
+      - name: Gate 2 Summary (Passed)
+        if: success()
         run: |
           echo "### Gate 2: SAST and SCA Vulnerability Scans" >> $GITHUB_STEP_SUMMARY
           echo "| Layer | Scan Type | Tool | Result |" >> $GITHUB_STEP_SUMMARY
@@ -96,6 +105,14 @@ jobs:
           echo "| FastAPI Backend | SAST Code Analysis | Bandit | Passed (SARIF Uploaded) |" >> $GITHUB_STEP_SUMMARY
           echo "| Python Dependencies | SCA Supply Chain | pip-audit | Passed (0 CVEs) |" >> $GITHUB_STEP_SUMMARY
           echo "| Angular Dependencies | SCA Supply Chain | npm audit | Passed (0 Critical) |" >> $GITHUB_STEP_SUMMARY
+
+      - name: Gate 2 Summary (Failed)
+        if: failure()
+        run: |
+          echo "### Gate 2: SAST and SCA Vulnerability Scans" >> $GITHUB_STEP_SUMMARY
+          echo "| Layer | Scan Type | Tool | Result |" >> $GITHUB_STEP_SUMMARY
+          echo "| :--- | :--- | :--- | :--- |" >> $GITHUB_STEP_SUMMARY
+          echo "| Vulnerability Status | Code or Dependency Flaw | Bandit / pip-audit | FAILED |" >> $GITHUB_STEP_SUMMARY
 
   # Gate 3: Automated Testing & MLSecOps AI Guardrail Verification
   test-and-mlsecops:
@@ -123,8 +140,8 @@ jobs:
         run: |
           python -m pytest tests -v
 
-      - name: Gate 3 Summary
-        if: always()
+      - name: Gate 3 Summary (Passed)
+        if: success()
         run: |
           echo "### Gate 3: Automated Testing and MLSecOps" >> $GITHUB_STEP_SUMMARY
           echo "| Test Suite | Verified Scope | Tool | Result |" >> $GITHUB_STEP_SUMMARY
@@ -132,6 +149,14 @@ jobs:
           echo "| Backend API Tests | KPIs, Orders, Products | Pytest | Passed |" >> $GITHUB_STEP_SUMMARY
           echo "| MLSecOps Guardrails | Prompt Injection, RBAC Tooling | Custom Guardrails | Passed (9/9 Security Tests) |" >> $GITHUB_STEP_SUMMARY
           echo "| Model Artifacts | Prophet JSON Models | Integrity Check | Verified |" >> $GITHUB_STEP_SUMMARY
+
+      - name: Gate 3 Summary (Failed)
+        if: failure()
+        run: |
+          echo "### Gate 3: Automated Testing and MLSecOps" >> $GITHUB_STEP_SUMMARY
+          echo "| Test Suite | Verified Scope | Tool | Result |" >> $GITHUB_STEP_SUMMARY
+          echo "| :--- | :--- | :--- | :--- |" >> $GITHUB_STEP_SUMMARY
+          echo "| Test Execution | Unit / MLSecOps Tests | Pytest | FAILED (Broken Logic or Guardrail) |" >> $GITHUB_STEP_SUMMARY
 
   # Gate 4: Containerization & Image Vulnerability Scanning (Trivy)
   container-security:
@@ -177,11 +202,19 @@ jobs:
           exit-code: "0"
           severity: "CRITICAL,HIGH"
 
-      - name: Gate 4 Summary
-        if: always()
+      - name: Gate 4 Summary (Passed)
+        if: success()
         run: |
           echo "### Gate 4: Container Security and Build Verification" >> $GITHUB_STEP_SUMMARY
           echo "| Container Target | Base Image | Tool | Result |" >> $GITHUB_STEP_SUMMARY
           echo "| :--- | :--- | :--- | :--- |" >> $GITHUB_STEP_SUMMARY
           echo "| FastAPI Backend | python:3.11-slim (Non-root UID 10001) | Docker Buildx / Trivy | Built and Scanned |" >> $GITHUB_STEP_SUMMARY
           echo "| Angular Frontend | nginx:alpine-slim (Multi-stage) | Docker Buildx / Trivy | Built and Scanned |" >> $GITHUB_STEP_SUMMARY
+
+      - name: Gate 4 Summary (Failed)
+        if: failure()
+        run: |
+          echo "### Gate 4: Container Security and Build Verification" >> $GITHUB_STEP_SUMMARY
+          echo "| Container Target | Base Image | Tool | Result |" >> $GITHUB_STEP_SUMMARY
+          echo "| :--- | :--- | :--- | :--- |" >> $GITHUB_STEP_SUMMARY
+          echo "| Container Verification | Docker Build / Trivy | Docker / Trivy | FAILED (Build or Security Issue) |" >> $GITHUB_STEP_SUMMARY
