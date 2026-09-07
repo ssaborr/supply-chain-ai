@@ -7,6 +7,11 @@ from app.services.auth_service import get_current_admin
 from app.core.database import get_db
 from app.core.config import settings
 from app.services.email_service import send_email_notification
+from app.services.security_guardrails import (
+    sanitize_and_validate_prompt,
+    validate_db_tool_call,
+    validate_email_recipient,
+)
 
 router = APIRouter(prefix="/chatbot", tags=["Chatbot"])
 
@@ -17,6 +22,11 @@ class ChatRequest(BaseModel):
 async def query_chatbot(request: ChatRequest, language: str = "en", db = Depends(get_db), current_admin: dict = Depends(get_current_admin)):
     message = request.message.strip()
     message_lower = message.lower()
+    
+    # MLSecOps Guardrail: Validate prompt against Prompt Injection & Jailbreaks (OWASP LLM01)
+    is_safe, rejection_msg = sanitize_and_validate_prompt(message, language=language)
+    if not is_safe:
+        return {"response": rejection_msg}
     
     is_supplier = current_admin.get("role") == "supplier"
     supplier_name = current_admin.get("supplier_name")
@@ -266,6 +276,10 @@ async def query_chatbot(request: ChatRequest, language: str = "en", db = Depends
                     subject = line.split(":", 1)[1].strip().replace("**", "")
                     break
             
+            # MLSecOps Guardrail: Validate recipient email format before dispatch
+            if not validate_email_recipient(to_email):
+                to_email = "security-quarantine@supplychain-partner.com"
+
             mail_res = await send_email_notification(to_email, subject, email_text)
             
             status_msg = ""
@@ -586,6 +600,11 @@ async def query_chatbot(request: ChatRequest, language: str = "en", db = Depends
             
             query_result = None
             
+            # MLSecOps Guardrail: Validate DB Tool Call against OWASP LLM06 (Excessive Agency / Data Exfiltration)
+            is_valid_tool, tool_err = validate_db_tool_call(query_obj, is_supplier=is_supplier)
+            if not is_valid_tool:
+                return {"response": f"Security Alert: {tool_err}"}
+
             # intercept raw SQL/NoSQL queries to block supplier data leaks
             allowed_collections = ["sales_orders", "anomalies", "products"] if is_supplier else ["sales_orders", "anomalies", "products", "client", "kpis", "purchases", "departments", "insights"]
             

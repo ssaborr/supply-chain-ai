@@ -50,8 +50,8 @@ export class App {
     const headers = { 'Authorization': `Bearer ${token}` };
     const mode = this.isSupplierSearch ? 'products' : 'orders';
     const url = this.isSupplierSearch
-      ? 'http://127.0.0.1:8000/api/products'
-      : 'http://127.0.0.1:8000/api/orders';
+      ? '/api/products'
+      : '/api/orders';
 
     this.http.get<any[]>(url, { headers }).subscribe({
       next: (data) => {

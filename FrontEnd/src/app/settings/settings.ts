@@ -98,7 +98,7 @@ export class Settings implements OnInit, OnDestroy {
       'Authorization': `Bearer ${token}`
     });
 
-    this.http.get<UserItem[]>('http://127.0.0.1:8000/api/admins/', { headers }).subscribe({
+    this.http.get<UserItem[]>('/api/admins/', { headers }).subscribe({
       next: (data) => {
         this.users = data;
         this.isLoading = false;
@@ -150,7 +150,7 @@ export class Settings implements OnInit, OnDestroy {
       'Authorization': `Bearer ${token}`
     });
 
-    this.http.post('http://127.0.0.1:8000/api/admins/', payload, { headers }).subscribe({
+    this.http.post('/api/admins/', payload, { headers }).subscribe({
       next: () => {
         this.successMessage = `User ${payload.first_name} created successfully.`;
         this.loadUsers();
@@ -179,7 +179,7 @@ export class Settings implements OnInit, OnDestroy {
       'Authorization': `Bearer ${token}`
     });
 
-    this.http.delete(`http://127.0.0.1:8000/api/admins/${userId}`, { headers }).subscribe({
+    this.http.delete(`/api/admins/${userId}`, { headers }).subscribe({
       next: () => {
         this.successMessage = 'User deleted successfully.';
         this.loadUsers();
@@ -272,7 +272,7 @@ export class Settings implements OnInit, OnDestroy {
     const payload = { image: base64Data };
 
     this.http.post<UserItem>(
-      `http://127.0.0.1:8000/api/admins/${this.activeEnrollUser.id}/enroll-face`,
+      `/api/admins/${this.activeEnrollUser.id}/enroll-face`,
       payload,
       { headers }
     ).subscribe({
@@ -310,7 +310,7 @@ export class Settings implements OnInit, OnDestroy {
       'Authorization': `Bearer ${token}`
     });
 
-    this.http.delete<UserItem>(`http://127.0.0.1:8000/api/admins/${userId}/enroll-face`, { headers }).subscribe({
+    this.http.delete<UserItem>(`/api/admins/${userId}/enroll-face`, { headers }).subscribe({
       next: (updatedUser) => {
         this.successMessage = 'Face scans cleared successfully.';
         const idx = this.users.findIndex(u => u.id === updatedUser.id);
@@ -350,7 +350,7 @@ export class Settings implements OnInit, OnDestroy {
       'Authorization': `Bearer ${token}`
     });
 
-    this.http.get<any[]>('http://127.0.0.1:8000/api/products', { headers }).subscribe({
+    this.http.get<any[]>('/api/products', { headers }).subscribe({
       next: (data) => {
         this.products = data.map(p => ({
           ...p,
@@ -416,7 +416,7 @@ export class Settings implements OnInit, OnDestroy {
       transport_delay: parseInt(product.transport_delay) || 0
     };
 
-    this.http.put(`http://127.0.0.1:8000/api/products/${product.sku}/delays`, payload, { headers }).subscribe({
+    this.http.put(`/api/products/${product.sku}/delays`, payload, { headers }).subscribe({
       next: () => {
         product.isSaving = false;
         const idx = this.products.findIndex(p => p.sku === product.sku);
@@ -453,7 +453,7 @@ export class Settings implements OnInit, OnDestroy {
       'Authorization': `Bearer ${token}`
     });
 
-    this.http.post<any>('http://127.0.0.1:8000/api/products/train-delays', {}, { headers }).subscribe({
+    this.http.post<any>('/api/products/train-delays', {}, { headers }).subscribe({
       next: (resp) => {
         this.isTrainingModel = false;
         this.successMessage = resp.message || 'Delay prediction model trained successfully!';

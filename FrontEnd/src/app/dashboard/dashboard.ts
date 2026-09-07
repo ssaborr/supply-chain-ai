@@ -134,14 +134,20 @@ export class Dashboard implements OnInit, AfterViewInit {
     if (!bypassCache) {
       const cached = this.getDashboardCacheData(cacheKey);
       if (cached !== null && cached !== undefined) {
-        nextCallback(cached);
-        return;
+        // Do not use empty array cache
+        const isEmptyArray = Array.isArray(cached) && cached.length === 0;
+        if (!isEmptyArray) {
+          nextCallback(cached);
+          return;
+        }
       }
     }
 
     this.http.get<T>(url, { headers }).subscribe({
       next: (res) => {
-        this.saveToDashboardCache(cacheKey, res);
+        if (!Array.isArray(res) || res.length > 0) {
+          this.saveToDashboardCache(cacheKey, res);
+        }
         nextCallback(res);
       },
       error: (err) => {
@@ -166,7 +172,7 @@ export class Dashboard implements OnInit, AfterViewInit {
     if (token) {
       headers = headers.set('Authorization', `Bearer ${token}`);
     }
-    const kpiUrl = `http://127.0.0.1:8000/api/kpis/executive-summary${this.i18n.apiLanguageQuery()}`;
+    const kpiUrl = `/api/kpis/executive-summary${this.i18n.apiLanguageQuery()}`;
 
     this.http.get<any>(kpiUrl, { headers }).subscribe({
       next: (res) => {
@@ -339,7 +345,7 @@ export class Dashboard implements OnInit, AfterViewInit {
   loadTopProducts(bypassCache: boolean = false): void {
     const token = this.auth.getToken();
     const headers = new HttpHeaders({ 'Authorization': `Bearer ${token}` });
-    const url = 'http://127.0.0.1:8000/api/orders/top-products';
+    const url = '/api/orders/top-products';
 
     this.getWithCache<any[]>('topProducts', url, headers,
       (res) => {
@@ -362,7 +368,7 @@ export class Dashboard implements OnInit, AfterViewInit {
     const token = this.auth.getToken();
     const headers = new HttpHeaders({ 'Authorization': `Bearer ${token}` });
 
-    const kpiUrl = `http://127.0.0.1:8000/api/kpis/executive-summary${this.i18n.apiLanguageQuery()}`;
+    const kpiUrl = `/api/kpis/executive-summary${this.i18n.apiLanguageQuery()}`;
     this.getWithCache<any>('kpis', kpiUrl, headers,
       (res) => {
         this.aiNarrative = res.summary;
@@ -391,7 +397,7 @@ export class Dashboard implements OnInit, AfterViewInit {
     const tempAlerts: AlertFeedItem[] = [];
 
     // alert feed: query ML anomaly classifier checks
-    const orderUrl = `http://127.0.0.1:8000/api/orders/overview/explain${this.i18n.apiLanguageQuery()}`;
+    const orderUrl = `/api/orders/overview/explain${this.i18n.apiLanguageQuery()}`;
     this.getWithCache<any>('alert_order', orderUrl, headers,
       (res) => {
         if (res && res.explanation) {
@@ -413,7 +419,7 @@ export class Dashboard implements OnInit, AfterViewInit {
     );
 
     // alert feed: query ARIMA forecast alarms
-    const forecastUrl = `http://127.0.0.1:8000/api/products/forecasts/explain?product_id=191${this.i18n.apiLanguageQuery('&')}`;
+    const forecastUrl = `/api/products/forecasts/explain?product_id=191${this.i18n.apiLanguageQuery('&')}`;
     this.getWithCache<any>('alert_forecast', forecastUrl, headers,
       (res) => {
         if (res && res.explanation) {
@@ -435,7 +441,7 @@ export class Dashboard implements OnInit, AfterViewInit {
     );
 
     // alert feed: query product stockout risks
-    const clusterUrl = `http://127.0.0.1:8000/api/products/clusters/summary${this.i18n.apiLanguageQuery()}`;
+    const clusterUrl = `/api/products/clusters/summary${this.i18n.apiLanguageQuery()}`;
     this.getWithCache<any>('alert_inventory', clusterUrl, headers,
       (res) => {
         if (res && res.summary) {
@@ -457,7 +463,7 @@ export class Dashboard implements OnInit, AfterViewInit {
     );
 
     // alert feed: query customer segmentation risks
-    const partnerUrl = `http://127.0.0.1:8000/api/partners/clients/explain${this.i18n.apiLanguageQuery()}`;
+    const partnerUrl = `/api/partners/clients/explain${this.i18n.apiLanguageQuery()}`;
     this.getWithCache<any>('alert_partner', partnerUrl, headers,
       (res) => {
         if (res && res.explanation) {
@@ -489,7 +495,7 @@ export class Dashboard implements OnInit, AfterViewInit {
   initForecastChart(bypassCache: boolean = false): void {
     const token = this.auth.getToken();
     const headers = new HttpHeaders({ 'Authorization': `Bearer ${token}` });
-    const url = 'http://127.0.0.1:8000/api/products/forecasts?product_id=0';
+    const url = '/api/products/forecasts?product_id=0';
 
     const render = (forecasts: any[]) => {
       this.isLoadingForecast = false;
@@ -501,26 +507,39 @@ export class Dashboard implements OnInit, AfterViewInit {
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
 
-      const filtered = forecasts.filter(f => f.date >= '2026-09-01' && f.date <= '2026-12-31');
+      if (!forecasts || !Array.isArray(forecasts) || forecasts.length === 0) {
+        return;
+      }
+
+      let filtered = forecasts.filter(f => f.date >= '2026-09-01' && f.date <= '2026-12-31');
+      if (filtered.length === 0) {
+        // Fallback: take the most recent 90 days if custom range has no matches
+        filtered = forecasts.slice(-90);
+      }
+
       const sorted = filtered.sort((a, b) => a.date.localeCompare(b.date));
       if (sorted.length === 0) return;
 
       const labels = sorted.map(s => s.date);
-      const actualSalesData = sorted.map(s => s.sales !== null ? Math.round(s.sales) : null);
+      const actualSalesData = sorted.map(s => s.sales !== null && s.sales !== undefined ? Math.round(s.sales) : null);
+
+      // Locate index of last day with actual sales data to bridge curves cleanly
+      const lastActualIdx = sorted.reduce((last, s, i) => (s.sales !== null && s.sales !== undefined ? i : last), -1);
+
       const forecastSalesData = sorted.map((s, idx) => {
-        if (s.sales === null) return s.forecast !== null ? Math.round(s.forecast) : null;
-        if (sorted[idx + 1] && sorted[idx + 1].sales === null) return s.sales !== null ? Math.round(s.sales) : null;
-        return null;
+        if (lastActualIdx >= 0 && idx < lastActualIdx) return null;
+        if (idx === lastActualIdx) return s.sales !== null && s.sales !== undefined ? Math.round(s.sales) : null;
+        return s.forecast !== null && s.forecast !== undefined ? Math.round(s.forecast) : null;
       });
 
       const lowerBoundData = sorted.map((s, idx) => {
-        if (s.sales !== null) return null;
-        return s.forecast !== null ? Math.max(0, Math.round(s.forecast * 0.95)) : null;
+        if (lastActualIdx >= 0 && idx <= lastActualIdx) return null;
+        return s.forecast !== null && s.forecast !== undefined ? Math.max(0, Math.round(s.forecast * 0.95)) : null;
       });
 
       const upperBoundData = sorted.map((s, idx) => {
-        if (s.sales !== null) return null;
-        return s.forecast !== null ? Math.round(s.forecast * 1.05) : null;
+        if (lastActualIdx >= 0 && idx <= lastActualIdx) return null;
+        return s.forecast !== null && s.forecast !== undefined ? Math.round(s.forecast * 1.05) : null;
       });
 
       if (this.forecastChart) {
@@ -620,7 +639,7 @@ export class Dashboard implements OnInit, AfterViewInit {
   initRfmChart(bypassCache: boolean = false): void {
     const token = this.auth.getToken();
     const headers = new HttpHeaders({ 'Authorization': `Bearer ${token}` });
-    const url = 'http://127.0.0.1:8000/api/partners/clients/segmentation';
+    const url = '/api/partners/clients/segmentation';
 
     const render = (clients: any[]) => {
       this.isLoadingRFM = false;
@@ -742,7 +761,7 @@ export class Dashboard implements OnInit, AfterViewInit {
   initAnomalyChart(bypassCache: boolean = false): void {
     const token = this.auth.getToken();
     const headers = new HttpHeaders({ 'Authorization': `Bearer ${token}` });
-    const url = 'http://127.0.0.1:8000/api/orders';
+    const url = '/api/orders';
 
     const render = (orders: any[]) => {
       this.isLoadingAnomalies = false;
@@ -827,7 +846,7 @@ export class Dashboard implements OnInit, AfterViewInit {
   initProductsChart(bypassCache: boolean = false): void {
     const token = this.auth.getToken();
     const headers = new HttpHeaders({ 'Authorization': `Bearer ${token}` });
-    const url = 'http://127.0.0.1:8000/api/orders/discount-analysis';
+    const url = '/api/orders/discount-analysis';
 
     const render = (res: any) => {
       this.isLoadingProducts = false;

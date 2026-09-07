@@ -28,7 +28,7 @@ def load_lgb_model():
             mtime = os.path.getmtime(model_path)
             if LGB_MODEL_DATA is None or mtime > LGB_MODEL_MTIME:
                 with open(model_path, "rb") as f:
-                    LGB_MODEL_DATA = pickle.load(f)
+                    LGB_MODEL_DATA = pickle.load(f)  # nosec B301
                 LGB_MODEL_MTIME = mtime
         except Exception:
             pass

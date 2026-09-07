@@ -100,7 +100,11 @@ async def list_forecasts(
     current_admin: dict = Depends(require_admin_role)
 ):
     query = {"product_id": product_id} if product_id is not None else {}
-    if product_id is not None and product_id != 0:
+    if product_id == 0:
+        count_zero = await db["forecasts"].count_documents({"product_id": 0})
+        if count_zero == 0:
+            await retrain_demand_forecast(db, 0)
+    elif product_id is not None and product_id != 0:
         global RETRAINED_PRODUCTS
         if product_id not in RETRAINED_PRODUCTS:
             hist_count = await db["forecasts"].count_documents({"product_id": product_id, "sales": {"$ne": None}})

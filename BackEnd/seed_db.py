@@ -514,5 +514,13 @@ def seed_database():
     except Exception as e:
         logger.error(f"Failed to run K-Means product clustering post-seed: {e}")
 
+    # Run global ARIMA demand forecast training post-seed
+    try:
+        from train_global import train_global
+        import asyncio
+        asyncio.run(train_global())
+    except Exception as e:
+        logger.error(f"Failed to run global ARIMA demand forecast training post-seed: {e}")
+
 if __name__ == "__main__":
     seed_database()

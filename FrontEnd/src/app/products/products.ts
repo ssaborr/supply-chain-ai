@@ -125,7 +125,7 @@ export class Products implements OnInit, AfterViewInit {
       'Authorization': `Bearer ${token}`
     });
 
-    this.http.get<any[]>('http://127.0.0.1:8000/api/products/clusters', { headers }).subscribe({
+    this.http.get<any[]>('/api/products/clusters', { headers }).subscribe({
       next: (data) => {
         this.products = data.map((p) => ({
           ...p,
@@ -176,7 +176,7 @@ export class Products implements OnInit, AfterViewInit {
       'Authorization': `Bearer ${token}`
     });
 
-    this.http.get<{ summary: string }>(`http://127.0.0.1:8000/api/products/clusters/summary${this.i18n.apiLanguageQuery()}`, { headers }).subscribe({
+    this.http.get<{ summary: string }>(`/api/products/clusters/summary${this.i18n.apiLanguageQuery()}`, { headers }).subscribe({
       next: (res) => {
         this.aiSummary = res.summary;
         this.cdr.detectChanges();
@@ -488,7 +488,7 @@ export class Products implements OnInit, AfterViewInit {
       'Authorization': `Bearer ${token}`
     });
 
-    this.http.get<string[]>('http://127.0.0.1:8000/api/products/categories', { headers }).subscribe({
+    this.http.get<string[]>('/api/products/categories', { headers }).subscribe({
       next: (res) => {
         this.allCategories = res;
         this.filteredCategories = [...res];
@@ -496,7 +496,7 @@ export class Products implements OnInit, AfterViewInit {
       error: (err) => console.error('Failed to load categories', err)
     });
 
-    this.http.get<any[]>('http://127.0.0.1:8000/api/products/departments', { headers }).subscribe({
+    this.http.get<any[]>('/api/products/departments', { headers }).subscribe({
       next: (res) => {
         this.allDepartments = res;
         this.filteredDepartments = [...res];
@@ -611,7 +611,7 @@ export class Products implements OnInit, AfterViewInit {
       transport_delay: 0
     };
 
-    this.http.post('http://127.0.0.1:8000/api/products', payload, { headers }).subscribe({
+    this.http.post('/api/products', payload, { headers }).subscribe({
       next: (res: any) => {
         this.isSubmitting = false;
         this.showCreateModal = false;

@@ -65,7 +65,7 @@ export class Segmentation implements OnInit {
       }
     };
 
-    this.http.get<any[]>('http://127.0.0.1:8000/api/partners/clients/segmentation', { headers }).subscribe({
+    this.http.get<any[]>('/api/partners/clients/segmentation', { headers }).subscribe({
       next: (data) => {
         this.clients = data;
         clientsLoaded = true;
@@ -78,7 +78,7 @@ export class Segmentation implements OnInit {
       }
     });
 
-    this.http.get<any[]>('http://127.0.0.1:8000/api/partners/suppliers/segmentation', { headers }).subscribe({
+    this.http.get<any[]>('/api/partners/suppliers/segmentation', { headers }).subscribe({
       next: (data) => {
         this.suppliers = data;
         suppliersLoaded = true;

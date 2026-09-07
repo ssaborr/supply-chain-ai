@@ -10,6 +10,7 @@ Thumbs.db
 *.swp
 *.dump
 dump_ppt.txt
+cookies.txt
 .history/
 .agents/
 .tempmediaStorage/

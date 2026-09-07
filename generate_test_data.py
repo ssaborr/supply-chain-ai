@@ -11,7 +11,7 @@ def generate_test_csv():
         return
         
     print(f"Loading first 50 rows from {source_path}...")
-    # Read the first 50 rows (including header, nrows reads 50 data rows)
+
     df = pd.read_csv(source_path, nrows=50, encoding='latin-1')
     
     # Offset Order Id to make them brand new unique orders

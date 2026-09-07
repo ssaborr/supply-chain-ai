@@ -17,7 +17,7 @@ export interface UserState {
 })
 export class Auth {
   private http = inject(HttpClient);
-  private apiUrl = 'http://127.0.0.1:8000/api';
+  private apiUrl = '/api';
   
   private userStateSubject = new BehaviorSubject<UserState | null | undefined>(undefined);
   public userState$ = this.userStateSubject.asObservable();

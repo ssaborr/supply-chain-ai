@@ -146,7 +146,7 @@ export class Supplier implements OnInit, AfterViewInit {
     if (!token) return;
     const headers = new HttpHeaders({ 'Authorization': `Bearer ${token}` });
 
-    this.http.get<string[]>('http://127.0.0.1:8000/api/supplier/list', { headers }).subscribe({
+    this.http.get<string[]>('/api/supplier/list', { headers }).subscribe({
       next: (list) => {
         this.suppliersList = list;
         if (list.length > 0) {
@@ -172,7 +172,7 @@ export class Supplier implements OnInit, AfterViewInit {
     }
     const headers = new HttpHeaders({ 'Authorization': `Bearer ${token}` });
 
-    const url = `http://127.0.0.1:8000/api/supplier/dashboard-data?supplier_name=${encodeURIComponent(this.selectedSupplier)}${this.i18n.apiLanguageQuery('&')}`;
+    const url = `/api/supplier/dashboard-data?supplier_name=${encodeURIComponent(this.selectedSupplier)}${this.i18n.apiLanguageQuery('&')}`;
     this.http.get<any>(url, { headers }).subscribe({
       next: (data) => {
         this.kpis = data.kpis;

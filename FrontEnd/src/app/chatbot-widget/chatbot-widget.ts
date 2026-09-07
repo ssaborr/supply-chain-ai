@@ -73,7 +73,7 @@ export class ChatbotWidget implements OnInit, AfterViewChecked {
       'Authorization': `Bearer ${token}`
     });
 
-    const url = `http://127.0.0.1:8000/api/chatbot/query${this.i18n.apiLanguageQuery()}`;
+    const url = `/api/chatbot/query${this.i18n.apiLanguageQuery()}`;
     this.http.post<any>(url, { message: text }, { headers }).subscribe({
       next: (res) => {
         this.isTyping = false;

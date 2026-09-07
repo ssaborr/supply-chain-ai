@@ -250,7 +250,7 @@ export class SalesOrder implements OnInit, AfterViewInit {
     });
 
     // map delays per sku before loading orders (bypassing local cache for real-time Settings coherence)
-    this.http.get<any[]>('http://127.0.0.1:8000/api/products', { headers }).subscribe({
+    this.http.get<any[]>('/api/products', { headers }).subscribe({
       next: (productsData) => {
         this.productsList = productsData;
         this.productDelaysMap = {};
@@ -263,7 +263,7 @@ export class SalesOrder implements OnInit, AfterViewInit {
         });
 
       // Fetch sales orders
-      this.getWithCache<any[]>('http://127.0.0.1:8000/api/orders', headers, (data) => {
+      this.getWithCache<any[]>('/api/orders', headers, (data) => {
         // shift dates to Sep-Dec 2026 timeframe for consistency and compute delivery date using product specific delays
         data.forEach(o => {
           o.order_date = this.adjustDateToSepDec2026(o.order_date);
@@ -342,7 +342,7 @@ export class SalesOrder implements OnInit, AfterViewInit {
     });
 
     // Fetch purchases
-    this.getWithCache<any[]>('http://127.0.0.1:8000/api/orders/purchases', headers, (data) => {
+    this.getWithCache<any[]>('/api/orders/purchases', headers, (data) => {
       this.purchases = data;
       this.buildCalendarGrid();
       this.cdr.markForCheck();
@@ -351,7 +351,7 @@ export class SalesOrder implements OnInit, AfterViewInit {
     });
 
     // Fetch AI explanation
-    this.getWithCache<any>(`http://127.0.0.1:8000/api/orders/overview/explain${this.i18n.apiLanguageQuery()}`, headers, (res) => {
+    this.getWithCache<any>(`/api/orders/overview/explain${this.i18n.apiLanguageQuery()}`, headers, (res) => {
       this.aiExplanation = res.explanation;
       this.cdr.markForCheck();
     }, (err) => {
@@ -360,7 +360,7 @@ export class SalesOrder implements OnInit, AfterViewInit {
     });
 
     // Fetch top products
-    this.getWithCache<any[]>('http://127.0.0.1:8000/api/orders/top-products', headers, (data) => {
+    this.getWithCache<any[]>('/api/orders/top-products', headers, (data) => {
       this.topProducts = data;
       this.cdr.markForCheck();
     }, (err) => {
@@ -606,7 +606,7 @@ export class SalesOrder implements OnInit, AfterViewInit {
       'Authorization': `Bearer ${token}`
     });
 
-    this.http.get<{ explanation: string }>(`http://127.0.0.1:8000/api/orders/${order.id}/explain${this.i18n.apiLanguageQuery()}`, { headers }).subscribe({
+    this.http.get<{ explanation: string }>(`/api/orders/${order.id}/explain${this.i18n.apiLanguageQuery()}`, { headers }).subscribe({
       next: (res) => {
         this.popupAiSummary = res.explanation;
         this.cdr.markForCheck();
@@ -642,7 +642,7 @@ export class SalesOrder implements OnInit, AfterViewInit {
       description: this.popupDecisionComment
     };
 
-    this.http.post(`http://127.0.0.1:8000/api/orders/${this.selectedOrderForPopup.id}/verdict`, payload, { headers }).subscribe({
+    this.http.post(`/api/orders/${this.selectedOrderForPopup.id}/verdict`, payload, { headers }).subscribe({
       next: () => {
         this.selectedOrderForPopup.user_verdict = verdict;
         this.selectedOrderForPopup.user_description = this.popupDecisionComment;
@@ -1189,7 +1189,7 @@ export class SalesOrder implements OnInit, AfterViewInit {
     const token = this.auth.getToken();
     const headers = new HttpHeaders({ 'Authorization': `Bearer ${token}` });
 
-    this.getWithCache<any>('http://127.0.0.1:8000/api/orders/discount-analysis', headers, (res) => {
+    this.getWithCache<any>('/api/orders/discount-analysis', headers, (res) => {
       const labels = res.labels;
       const revenueData = res.revenue;
       const unitsSoldData = res.units_sold;
@@ -1372,7 +1372,7 @@ export class SalesOrder implements OnInit, AfterViewInit {
     if (!token) return;
     const headers = new HttpHeaders().set('Authorization', 'Bearer ' + token);
     
-    this.http.get('http://127.0.0.1:8000/api/orders/download-template', {
+    this.http.get('/api/orders/download-template', {
       headers,
       responseType: 'blob'
     }).subscribe({
@@ -1444,7 +1444,7 @@ export class SalesOrder implements OnInit, AfterViewInit {
       'Authorization': `Bearer ${token}`
     });
 
-    this.http.post<any>('http://127.0.0.1:8000/api/orders/validate', formData, { headers }).subscribe({
+    this.http.post<any>('/api/orders/validate', formData, { headers }).subscribe({
       next: (res) => {
         if (res.status === 'success') {
           this.selectedFileName = file.name;
@@ -1526,7 +1526,7 @@ export class SalesOrder implements OnInit, AfterViewInit {
       'Authorization': `Bearer ${token}`
     });
 
-    this.http.post<any>('http://127.0.0.1:8000/api/orders/import', formData, { headers }).subscribe({
+    this.http.post<any>('/api/orders/import', formData, { headers }).subscribe({
       next: (res) => {
         this.isImporting = false;
         try {

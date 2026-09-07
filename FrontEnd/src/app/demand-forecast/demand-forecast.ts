@@ -173,7 +173,7 @@ export class DemandForecast implements OnInit, AfterViewInit {
       'Authorization': `Bearer ${token}`
     });
 
-    this.http.get<any[]>('http://127.0.0.1:8000/api/products', { headers }).subscribe({
+    this.http.get<any[]>('/api/products', { headers }).subscribe({
       next: (prods) => {
         this.products = prods.map((p) => ({
           ...p,
@@ -226,7 +226,7 @@ export class DemandForecast implements OnInit, AfterViewInit {
     this.aiExplanation = 'Generating AI explanation...';
     this.cdr.markForCheck();
 
-    this.http.get<any>(`http://127.0.0.1:8000/api/products/forecasts/explain?product_id=${this.selectedProductId}${this.i18n.apiLanguageQuery('&')}`, { headers }).subscribe({
+    this.http.get<any>(`/api/products/forecasts/explain?product_id=${this.selectedProductId}${this.i18n.apiLanguageQuery('&')}`, { headers }).subscribe({
       next: (res) => {
         this.ngZone.run(() => {
           this.aiExplanation = res.explanation;
@@ -399,7 +399,7 @@ export class DemandForecast implements OnInit, AfterViewInit {
     }, 5000);
 
     this.http.get<any[]>(
-      `http://127.0.0.1:8000/api/products/forecasts?product_id=${productIdAtRequest}`,
+      `/api/products/forecasts?product_id=${productIdAtRequest}`,
       { headers }
     ).pipe(timeout(15000)).subscribe({
       next: (forecasts) => {
