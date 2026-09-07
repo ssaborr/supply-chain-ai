@@ -48,12 +48,12 @@ jobs:
       - name: Install SAST & SCA Scanning Tools
         run: |
           python -m pip install --upgrade pip
-          pip install bandit pip-audit
+          pip install bandit bandit-sarif-formatter pip-audit
 
       - name: Run Bandit (FastAPI Python SAST)
         run: |
-          # Generate SARIF report for GitHub Security Tab first (guaranteed creation)
-          bandit -r BackEnd/app -f sarif -o bandit-results.sarif || true
+          # Generate SARIF report for GitHub Security Tab (with bandit-sarif-formatter)
+          bandit -r BackEnd/app -f sarif -o bandit-results.sarif --exit-zero
           # Print human-readable summary in CI logs
           bandit -r BackEnd/app -ll -f screen || true
 
