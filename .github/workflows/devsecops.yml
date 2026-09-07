@@ -28,7 +28,7 @@ jobs:
           tar -xzf gitleaks_8.24.0_linux_x64.tar.gz
           sudo mv gitleaks /usr/local/bin/
           rm -f gitleaks_8.24.0_linux_x64.tar.gz
-          gitleaks detect --verbose --redact
+          gitleaks detect --verbose --redact --gitleaks-ignore-path .gitleaksignore
 
   # Gate 2: SAST & SCA (Code & Dependency Vulnerability Scanning)
   sast-and-sca:

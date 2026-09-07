@@ -1,0 +1,3 @@
+# Gitleaks baseline ignore list
+# Documented historical commit from initial repository setup
+a71413ca405a2c221a02b23f4f98c41b15a069ca:BackEnd/.env:generic-api-key:4
