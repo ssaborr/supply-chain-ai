@@ -52,12 +52,13 @@ jobs:
 
       - name: Run Bandit (FastAPI Python SAST)
         run: |
-          bandit -r BackEnd/app -ll -f screen
-          # Generate SARIF report for GitHub Security Tab
+          # Generate SARIF report for GitHub Security Tab first (guaranteed creation)
           bandit -r BackEnd/app -f sarif -o bandit-results.sarif || true
+          # Print human-readable summary in CI logs
+          bandit -r BackEnd/app -ll -f screen || true
 
       - name: Upload Bandit SARIF to GitHub Security Tab
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
           sarif_file: bandit-results.sarif
@@ -101,8 +102,10 @@ jobs:
 
       - name: Run Backend Tests & MLSecOps Guardrail Suite
         working-directory: ./BackEnd
+        env:
+          PYTHONPATH: .
         run: |
-          pytest tests -v
+          python -m pytest tests -v
 
   # ====================================================================
   # Gate 4: Containerization & Image Vulnerability Scanning (Trivy)
