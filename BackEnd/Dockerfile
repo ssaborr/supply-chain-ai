@@ -1,7 +1,4 @@
-# ========================================================
-# DevSecOps Hardened Dockerfile for FastAPI Backend
-# Follows CIS Docker Benchmark & Least Privilege Principle
-# ========================================================
+# Dockerfile for FastAPI Backend (Non-root user)
 FROM python:3.11-slim AS runtime
 
 # Set environment variables:

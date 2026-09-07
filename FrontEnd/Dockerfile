@@ -1,8 +1,4 @@
-# ========================================================
-# DevSecOps Multi-Stage Dockerfile for Angular Frontend
-# Stage 1: Build compilation environment
-# Stage 2: Minimal hardened Nginx runtime
-# ========================================================
+# Multi-Stage Dockerfile for Angular Frontend
 
 # ---------- Stage 1: Build Environment ----------
 FROM node:20-alpine AS builder

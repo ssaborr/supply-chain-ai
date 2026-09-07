@@ -12,9 +12,7 @@ permissions:
   security-events: write
 
 jobs:
-  # ====================================================================
   # Gate 1: Secret Detection (Shift-Left Pre-Commit Protection)
-  # ====================================================================
   secret-detection:
     name: "Gate 1: Gitleaks Secret Detection"
     runs-on: ubuntu-latest
@@ -24,14 +22,15 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Run Gitleaks Secret Scan
-        uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Install and Run Gitleaks
+        run: |
+          wget -q https://github.com/gitleaks/gitleaks/releases/download/v8.24.0/gitleaks_8.24.0_linux_x64.tar.gz
+          tar -xzf gitleaks_8.24.0_linux_x64.tar.gz
+          sudo mv gitleaks /usr/local/bin/
+          rm -f gitleaks_8.24.0_linux_x64.tar.gz
+          gitleaks detect --verbose --redact
 
-  # ====================================================================
   # Gate 2: SAST & SCA (Code & Dependency Vulnerability Scanning)
-  # ====================================================================
   sast-and-sca:
     name: "Gate 2: SAST (Bandit) & SCA (pip-audit / npm audit)"
     runs-on: ubuntu-latest
@@ -80,9 +79,7 @@ jobs:
         run: |
           npm audit --audit-level=critical
 
-  # ====================================================================
   # Gate 3: Automated Testing & MLSecOps AI Guardrail Verification
-  # ====================================================================
   test-and-mlsecops:
     name: "Gate 3: Automated Testing & MLSecOps Guardrails"
     runs-on: ubuntu-latest
@@ -107,9 +104,7 @@ jobs:
         run: |
           python -m pytest tests -v
 
-  # ====================================================================
   # Gate 4: Containerization & Image Vulnerability Scanning (Trivy)
-  # ====================================================================
   container-security:
     name: "Gate 4: Docker Build & Trivy Image Security Scan"
     runs-on: ubuntu-latest
