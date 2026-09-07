@@ -5,9 +5,8 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Optimize build caching: copy package manifests first
 COPY package*.json ./
-RUN npm ci --prefer-offline --no-audit
+RUN npm install --no-audit
 
 # Copy application code and compile
 COPY . .
