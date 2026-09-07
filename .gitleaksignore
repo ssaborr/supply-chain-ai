@@ -1,3 +1,5 @@
 # Gitleaks baseline ignore list
 # Documented historical commit from initial repository setup
 a71413ca405a2c221a02b23f4f98c41b15a069ca:BackEnd/.env:generic-api-key:4
+# Deliberate CI test leak commit (file deleted)
+d1938752b209e14a6638e4ba33ac91ce234b954c:BackEnd/app/test_leak.py:github-pat:1
