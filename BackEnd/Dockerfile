@@ -1,5 +1,5 @@
 # Dockerfile for FastAPI Backend (Non-root user)
-FROM python:3.11-slim AS runtime
+FROM python:3.7-slim AS runtime
 
 # Set environment variables:
 # - PYTHONDONTWRITEBYTECODE: Disables writing .pyc files (cleaner container state)
